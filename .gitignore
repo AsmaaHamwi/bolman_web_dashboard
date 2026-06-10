@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local secrets — never commit (share `.env.example` instead)
+.env
+.env.local
+.env.*.local
+
+# Logs / cache
+*.log
+.npm-cache/
+.eslintcache
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Vite
+*.local
