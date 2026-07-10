@@ -39,7 +39,7 @@ export function NotificationsPage() {
             <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
           </Field>
           <Button onClick={submit}>{messages.company.notifications.send}</Button>
-          {done && <p className="text-sm text-emerald-500">{done}</p>}
+          {done && <p className="text-sm text-sky-600 dark:text-sky-300">{done}</p>}
         </div>
       </Card>
     </div>

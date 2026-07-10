@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 import { Loader2 } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { DataTable, Td } from '../../components/ui/Table';
 import { StatusBadge } from '../../components/ui/Status';
 import { Button } from '../../components/ui/Button';
-import { Modal } from '../../components/ui/Modal';
+import { TicketQrModal } from '../../components/booking/TicketQrModal';
 import { Pagination } from '../../components/ui/Pagination';
+import { StarRating } from '../../components/ui/StarRating';
 import { BOOKINGS_PAGE_SIZE } from '../../services/booking.service';
 import { useI18n } from '../../hooks/useI18n';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useBookings } from '../../hooks/useBookings';
 import { getBookingDetails } from '../../services/booking.service';
-import { BookingsFilterBar, EMPTY_BOOKINGS_FILTERS } from './BookingsFilterBar';
+import { BookingsFilterBar, getDefaultBookingsFilters, hasCustomBookingsFilters } from './BookingsFilterBar';
 import type { BookingsListFilters } from '../../services/booking.service';
 import { formatDateTime, formatMoney } from '../../utils/format';
+import { bookerDisplay } from '../../utils/bookingDisplay';
 
 function seatNumbersFromBooking(row: any): string {
   const seats = row.booking_seats ?? [];
@@ -25,28 +26,14 @@ function seatNumbersFromBooking(row: any): string {
     .join(', ');
 }
 
-function bookerDisplay(row: any, officeLabel: string) {
-  return row.booker?.full_name?.trim() || row.creator?.full_name?.trim() || officeLabel;
-}
-
 function paymentMethodFirst(row: any): string {
   const p = row.payments;
   if (Array.isArray(p) && p[0]?.payment_method) return String(p[0].payment_method);
   return '-';
 }
 
-function qrPayloads(row: any): string[] {
-  const tickets = row.tickets ?? [];
-  const mode = row.ticket_mode;
-  if (mode === 'group') {
-    const t = tickets.find((x: any) => x.ticket_type === 'group' && x.qr_token);
-    return t?.qr_token ? [String(t.qr_token)] : [];
-  }
-  return tickets.filter((x: any) => x.qr_token).map((x: any) => String(x.qr_token));
-}
-
 function hasActiveFilters(filters: BookingsListFilters) {
-  return Object.values(filters).some((value) => String(value ?? '').trim() !== '');
+  return hasCustomBookingsFilters(filters);
 }
 
 function filtersEqual(a: BookingsListFilters, b: BookingsListFilters) {
@@ -61,17 +48,27 @@ function filtersEqual(a: BookingsListFilters, b: BookingsListFilters) {
   );
 }
 
+function bookingRatingCell(booking: any, messages: { common: { notApplicable: string }; company: { bookings: { ratingPending: string } } }) {
+  const value = booking.rating_value != null ? Number(booking.rating_value) : null;
+  if (value != null) return <StarRating value={value} />;
+  if (booking.booking_status === 'completed') {
+    return <StarRating value={null} emptyLabel={messages.company.bookings.ratingPending} />;
+  }
+  return <StarRating value={null} emptyLabel={messages.common.notApplicable} />;
+}
+
 export function CompanyBookingsPage() {
   const company = useCompanyContext();
   const companyId = company.data;
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
-  const [queryFilters, setQueryFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
+  const [filters, setFilters] = useState<BookingsListFilters>(() => getDefaultBookingsFilters());
+  const [queryFilters, setQueryFilters] = useState<BookingsListFilters>(() => getDefaultBookingsFilters());
   const { data, isPending, error, isError, isFetching } = useBookings(companyId, {
     enabled: !!companyId,
     page,
     pageSize: BOOKINGS_PAGE_SIZE,
     filters: queryFilters,
+    live: true,
   });
   const bookings = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -80,7 +77,8 @@ export function CompanyBookingsPage() {
   const { messages } = useI18n();
   const loading = company.isPending || isPending;
   const filtersPending = !filtersEqual(filters, queryFilters);
-  const tableLoading = loading || isFetching || filtersPending;
+  const tableLoading = (loading || filtersPending) && !bookings.length;
+  const refreshing = isFetching && !!bookings.length;
   const [qrBooking, setQrBooking] = useState<any | null>(null);
   const [qrLoadingId, setQrLoadingId] = useState<string | null>(null);
 
@@ -108,7 +106,17 @@ export function CompanyBookingsPage() {
   );
 
   const officeLabel = messages.company.bookings.officeBookingLabel;
-  const qrTokens = qrBooking ? qrPayloads(qrBooking) : [];
+  const shareCopy = {
+    heading: messages.company.bookings.shareHeading,
+    route: messages.company.bookings.shareRoute,
+    departure: messages.company.bookings.shareDeparture,
+    bus: messages.company.bookings.shareBus,
+    seats: messages.company.bookings.shareSeats,
+    passenger: messages.company.bookings.sharePassenger,
+    ticketCode: messages.company.bookings.shareTicketCode,
+    scanHint: messages.company.bookings.shareScanHint,
+    routeArrow: '→',
+  };
 
   return (
     <div>
@@ -117,11 +125,11 @@ export function CompanyBookingsPage() {
       <BookingsFilterBar
         filters={filters}
         onChange={setFilters}
-        onReset={() => setFilters(EMPTY_BOOKINGS_FILTERS)}
+        onReset={() => setFilters(getDefaultBookingsFilters())}
         loading={tableLoading}
       />
 
-      {tableLoading ? (
+      {tableLoading || refreshing ? (
         <div
           className="mb-4 flex items-center gap-2 rounded-2xl border border-bolman-purple/20 bg-bolman-purple/5 px-4 py-3 text-sm font-medium text-bolman-purple dark:border-bolman-purple/30 dark:bg-bolman-purple/10 dark:text-violet-200"
           role="status"
@@ -183,6 +191,7 @@ export function CompanyBookingsPage() {
               <Td>{paymentMethodFirst(booking)}</Td>
               <Td>{booking.ticket_mode === 'group' ? messages.ticketMode.qrGroup : messages.ticketMode.qrIndividual}</Td>
               <Td><StatusBadge value={booking.booking_status} /></Td>
+              <Td>{bookingRatingCell(booking, messages)}</Td>
               <Td>
                 <div className="flex flex-wrap gap-2">
                   <Link
@@ -229,31 +238,20 @@ export function CompanyBookingsPage() {
         />
       ) : null}
 
-      <Modal open={!!qrBooking} onClose={() => setQrBooking(null)} title={messages.company.bookings.qrModalTitle}>
-        {qrBooking ? (
-          <div className="grid gap-4">
-            {!qrTokens.length ? (
-              <p className="text-sm text-slate-600 dark:text-slate-300">{messages.company.bookings.noQrTokens}</p>
-            ) : (
-              <div className="flex flex-wrap justify-center gap-6">
-                {qrTokens.map((token, index) => (
-                  <div key={`${token}-${index}`} className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
-                    <QRCodeSVG value={token} size={160} level="M" />
-                    <span className="max-w-[200px] truncate font-mono text-xs text-slate-500" title={token}>
-                      {token.slice(0, 24)}…
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex justify-end">
-              <Button variant="secondary" type="button" onClick={() => setQrBooking(null)}>
-                {messages.common.close}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
+      <TicketQrModal
+        open={!!qrBooking}
+        onClose={() => setQrBooking(null)}
+        booking={qrBooking}
+        title={messages.company.bookings.qrModalTitle}
+        emptyLabel={messages.company.bookings.noQrTokens}
+        shareLabel={messages.company.bookings.shareTicket}
+        shareFailedLabel={messages.company.bookings.shareFailed}
+        shareDownloadedLabel={messages.company.bookings.shareDownloaded}
+        groupTicketLabel={messages.ticketMode.qrGroup}
+        individualTicketLabel={messages.ticketMode.qrIndividual}
+        closeLabel={messages.common.close}
+        shareCopy={shareCopy}
+      />
     </div>
   );
 }

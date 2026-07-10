@@ -56,6 +56,76 @@ export function getDropoffStops<T extends TripStopShape>(stops: T[], fromStopId?
     .sort((left, right) => left.order_stop - right.order_stop);
 }
 
+function normalizeCityId(cityId?: string | null) {
+  return cityId?.trim().toLowerCase() ?? '';
+}
+
+function pickCityStop<T extends TripStopShape & { id?: string }>(
+  cityStops: T[],
+  cityId: string,
+  pickMinOrder: boolean,
+) {
+  let picked: T | undefined;
+
+  for (const stop of cityStops) {
+    if (normalizeCityId(stop.city_id) !== cityId) continue;
+    if (!picked) {
+      picked = stop;
+      continue;
+    }
+    if (pickMinOrder ? stop.order_stop < picked.order_stop : stop.order_stop > picked.order_stop) {
+      picked = stop;
+    }
+  }
+
+  return picked;
+}
+
+export function resolveTripSegmentStopIds<T extends TripStopShape & { id?: string }>(
+  stops: T[],
+  originCityId: string,
+  destinationCityId: string,
+) {
+  const cityStops = stops
+    .filter((stop) => stop.stop_type === 'city')
+    .sort((left, right) => left.order_stop - right.order_stop);
+
+  if (cityStops.length === 0) return null;
+
+  const originId = normalizeCityId(originCityId);
+  const destinationId = normalizeCityId(destinationCityId);
+
+  let fromStop: T | undefined;
+  let toStop: T | undefined;
+
+  for (const stop of cityStops) {
+    const cityId = normalizeCityId(stop.city_id);
+    if (cityId === originId && stop.is_boarding_allowed) {
+      if (!fromStop || stop.order_stop < fromStop.order_stop) fromStop = stop;
+    }
+    if (cityId === destinationId && stop.is_dropoff_allowed) {
+      if (!toStop || stop.order_stop > toStop.order_stop) toStop = stop;
+    }
+  }
+
+  fromStop ??= pickCityStop(cityStops, originId, true);
+  toStop ??= pickCityStop(cityStops, destinationId, false);
+  fromStop ??= cityStops[0];
+  toStop ??= cityStops[cityStops.length - 1];
+
+  if (!fromStop?.id || !toStop?.id || fromStop.order_stop >= toStop.order_stop) return null;
+
+  return { fromTripStopId: fromStop.id, toTripStopId: toStop.id };
+}
+
+export function getFullRouteSegmentStopIds<T extends TripStopShape>(stops: T[]) {
+  const sorted = [...stops].sort((left, right) => left.order_stop - right.order_stop);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (!first?.id || !last?.id || first.id === last.id) return null;
+  return { fromTripStopId: first.id, toTripStopId: last.id };
+}
+
 export function buildTripStopsPayload(stops: Array<Omit<TripStopShape, 'order_stop'>>) {
   return stops.map((stop, index) => ({
     stop_type: stop.stop_type,

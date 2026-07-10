@@ -42,7 +42,7 @@ export function SeatMap({
         })}
       </div>
       <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs">
-        <Legend color="bg-emerald-100" label={messages.status.available} />
+        <Legend color="bg-bolman-softMint" label={messages.status.available} />
         <Legend color="bg-bolman-purple" label={messages.seatMap.selected} />
         <Legend color="bg-red-100" label={messages.status.reserved} />
         <Legend color="bg-amber-100" label={messages.status.locked} />
@@ -53,7 +53,7 @@ export function SeatMap({
 }
 
 function statusClass(status: SeatStatusRow['status']) {
-  if (status === 'available') return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300';
+  if (status === 'available') return 'bg-bolman-softMint text-bolman-deep hover:bg-bolman-mint/60 dark:bg-bolman-purple/15 dark:text-violet-200';
   if (status === 'reserved') return 'bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300';
   if (status === 'locked') return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300';
   return 'bg-slate-300 text-slate-500 dark:bg-slate-700 dark:text-slate-400';

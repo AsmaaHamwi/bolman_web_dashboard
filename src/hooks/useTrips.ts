@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { liveDashboardQueryOptions } from '../lib/queryClient';
 import { createTripWithStops, getTripStops, listTrips, searchTrips, updateTrip, type TripsListFilters } from '../services/trip.service';
 
 export function useTrips(
   companyId?: string | null,
-  options?: { enabled?: boolean; filters?: TripsListFilters },
+  options?: { enabled?: boolean; filters?: TripsListFilters; live?: boolean },
 ) {
   return useQuery({
     queryKey: ['trips', companyId, options?.filters],
     queryFn: () => listTrips(companyId, options?.filters),
     enabled: options?.enabled,
     placeholderData: (previous) => previous,
+    ...(options?.live ? liveDashboardQueryOptions : {}),
   });
 }
 export function useTripStops(tripId?: string) { return useQuery({ queryKey: ['trip-stops', tripId], queryFn: () => getTripStops(tripId!), enabled: !!tripId }); }

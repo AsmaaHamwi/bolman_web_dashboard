@@ -3,16 +3,28 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { DataTable, Td } from '../../components/ui/Table';
 import { StatusBadge } from '../../components/ui/Status';
 import { Pagination } from '../../components/ui/Pagination';
+import { StarRating } from '../../components/ui/StarRating';
 import { useI18n } from '../../hooks/useI18n';
 import { useBookings } from '../../hooks/useBookings';
 import { BOOKINGS_PAGE_SIZE } from '../../services/booking.service';
 import { formatMoney } from '../../utils/format';
+import { bookerDisplay } from '../../utils/bookingDisplay';
+
+function bookingRatingCell(booking: any, messages: { common: { notApplicable: string; noRating: string } }) {
+  const value = booking.rating_value != null ? Number(booking.rating_value) : null;
+  if (value != null) return <StarRating value={value} />;
+  if (booking.booking_status === 'completed') {
+    return <StarRating value={null} emptyLabel={messages.common.noRating} />;
+  }
+  return <StarRating value={null} emptyLabel={messages.common.notApplicable} />;
+}
 
 export function GlobalBookingsPage() {
   const [page, setPage] = useState(1);
   const { data, isPending, isFetching } = useBookings(undefined, {
     page,
     pageSize: BOOKINGS_PAGE_SIZE,
+    live: true,
   });
   const bookings = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -46,12 +58,13 @@ export function GlobalBookingsPage() {
         {bookings.map((booking: any) => (
           <tr key={booking.id}>
             <Td className="font-mono text-xs">{booking.id.slice(0, 8)}</Td>
-            <Td>{booking.booker?.full_name || '-'}</Td>
+            <Td>{bookerDisplay(booking, messages.company.bookings.officeBookingLabel)}</Td>
             <Td>{booking.trip?.origin?.name} ← {booking.trip?.destination?.name}</Td>
             <Td>{booking.count_passengers}</Td>
             <Td>{formatMoney(booking.price_total)}</Td>
             <Td><StatusBadge value={booking.payment_status} /></Td>
             <Td><StatusBadge value={booking.booking_status} /></Td>
+            <Td>{bookingRatingCell(booking, messages)}</Td>
           </tr>
         ))}
       </DataTable>

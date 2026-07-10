@@ -7,26 +7,38 @@ import { CompactFilterControl, FilterPanel, compactFilterInputClass } from '../.
 import { useI18n } from '../../hooks/useI18n';
 
 import type { BookingsListFilters } from '../../services/booking.service';
-
-
+import { getLocalDateInputValue } from '../../utils/format';
 
 export const EMPTY_BOOKINGS_FILTERS: BookingsListFilters = {
-
   search: '',
-
   bookingStatus: '',
-
   paymentStatus: '',
-
   paymentMethod: '',
-
   ticketMode: '',
-
   tripDateFrom: '',
-
   tripDateTo: '',
-
 };
+
+export function getDefaultBookingsFilters(): BookingsListFilters {
+  return {
+    ...EMPTY_BOOKINGS_FILTERS,
+    tripDateFrom: getLocalDateInputValue(),
+  };
+}
+
+export function hasCustomBookingsFilters(filters: BookingsListFilters) {
+  const defaultFrom = getLocalDateInputValue();
+  return Object.entries(filters).some(([key, value]) => {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) {
+      return key === 'tripDateFrom';
+    }
+    if (key === 'tripDateFrom' && trimmed === defaultFrom && !filters.tripDateTo?.trim()) {
+      return false;
+    }
+    return true;
+  });
+}
 
 
 
@@ -55,23 +67,15 @@ const TICKET_MODE_OPTIONS = ['', 'group', 'individual'] as const;
 
 
 function countActiveFilters(filters: BookingsListFilters) {
-
+  const defaultFrom = getLocalDateInputValue();
   return [
-
     filters.bookingStatus,
-
     filters.paymentStatus,
-
     filters.paymentMethod,
-
     filters.ticketMode,
-
-    filters.tripDateFrom,
-
+    filters.tripDateFrom !== defaultFrom ? filters.tripDateFrom : '',
     filters.tripDateTo,
-
   ].filter((value) => String(value ?? '').trim()).length;
-
 }
 
 
@@ -110,7 +114,7 @@ export function BookingsFilterBar({ filters, onChange, onReset, loading = false 
 
       loading={loading}
 
-      showReset={activeCount > 0 || !!filters.search?.trim()}
+      showReset={activeCount > 0 || !!filters.search?.trim() || hasCustomBookingsFilters(filters)}
 
       onReset={onReset}
 

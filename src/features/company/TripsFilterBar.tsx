@@ -1,32 +1,46 @@
 import { Search } from 'lucide-react';
 
+import { CityPicker } from '../../components/ui/CityPicker';
 import { Input, Select } from '../../components/ui/Input';
-
 import { CompactFilterControl, FilterPanel, compactFilterInputClass } from '../../components/ui/FilterPanel';
 
 import { useI18n } from '../../hooks/useI18n';
 
 import type { TripsListFilters } from '../../services/trip.service';
+import { getLocalDateInputValue } from '../../utils/format';
 
-
+export type { TripsListFilters };
 
 export const EMPTY_TRIPS_FILTERS: TripsListFilters = {
-
   search: '',
-
   status: '',
-
   originCityId: '',
-
   destinationCityId: '',
-
   departureDateFrom: '',
-
   departureDateTo: '',
-
   offerFilter: '',
-
 };
+
+export function getDefaultTripsFilters(): TripsListFilters {
+  return {
+    ...EMPTY_TRIPS_FILTERS,
+    departureDateFrom: getLocalDateInputValue(),
+  };
+}
+
+export function hasCustomTripsFilters(filters: TripsListFilters) {
+  const defaultFrom = getLocalDateInputValue();
+  return Object.entries(filters).some(([key, value]) => {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) {
+      return key === 'departureDateFrom';
+    }
+    if (key === 'departureDateFrom' && trimmed === defaultFrom && !filters.departureDateTo?.trim()) {
+      return false;
+    }
+    return true;
+  });
+}
 
 
 
@@ -57,23 +71,15 @@ const OFFER_FILTER_OPTIONS = ['', 'yes', 'no'] as const;
 
 
 function countActiveFilters(filters: TripsListFilters) {
-
+  const defaultFrom = getLocalDateInputValue();
   return [
-
     filters.status,
-
     filters.originCityId,
-
     filters.destinationCityId,
-
-    filters.departureDateFrom,
-
+    filters.departureDateFrom !== defaultFrom ? filters.departureDateFrom : '',
     filters.departureDateTo,
-
     filters.offerFilter,
-
   ].filter((value) => String(value ?? '').trim()).length;
-
 }
 
 
@@ -122,7 +128,7 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
       loading={loading}
 
-      showReset={activeCount > 0 || !!filters.search?.trim()}
+      showReset={activeCount > 0 || !!filters.search?.trim() || hasCustomTripsFilters(filters)}
 
       onReset={onReset}
 
@@ -186,29 +192,21 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
       <CompactFilterControl label={copy.originCity}>
 
-        <Select
+        <CityPicker
+
+          compact
 
           className={compactFilterInputClass}
 
+          cities={cities}
+
           value={filters.originCityId ?? ''}
 
-          onChange={(event) => update('originCityId', event.target.value)}
+          onChange={(cityId) => update('originCityId', cityId)}
 
-        >
+          placeholder={copy.all}
 
-          <option value="">{copy.all}</option>
-
-          {cities.map((city) => (
-
-            <option key={city.id} value={city.id}>
-
-              {city.name}
-
-            </option>
-
-          ))}
-
-        </Select>
+        />
 
       </CompactFilterControl>
 
@@ -216,29 +214,21 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
       <CompactFilterControl label={copy.destinationCity}>
 
-        <Select
+        <CityPicker
+
+          compact
 
           className={compactFilterInputClass}
 
+          cities={cities}
+
           value={filters.destinationCityId ?? ''}
 
-          onChange={(event) => update('destinationCityId', event.target.value)}
+          onChange={(cityId) => update('destinationCityId', cityId)}
 
-        >
+          placeholder={copy.all}
 
-          <option value="">{copy.all}</option>
-
-          {cities.map((city) => (
-
-            <option key={city.id} value={city.id}>
-
-              {city.name}
-
-            </option>
-
-          ))}
-
-        </Select>
+        />
 
       </CompactFilterControl>
 

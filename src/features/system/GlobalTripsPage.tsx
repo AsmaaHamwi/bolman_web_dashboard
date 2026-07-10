@@ -6,7 +6,7 @@ import { useTrips } from '../../hooks/useTrips';
 import { formatDateTime, formatMoney } from '../../utils/format';
 
 export function GlobalTripsPage() {
-  const { data = [], isPending } = useTrips();
+  const { data = [], isPending } = useTrips(undefined, { live: true });
   const { messages } = useI18n();
 
   return (

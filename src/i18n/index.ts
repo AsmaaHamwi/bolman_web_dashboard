@@ -16,7 +16,8 @@ export function getDirection(locale: Locale) {
 }
 
 export function getIntlLocale(locale: Locale) {
-  return locale === 'ar' ? 'ar-SY' : 'en-US';
+  // Arabic UI text, Western digits (0-9) for dates, times, and amounts.
+  return locale === 'ar' ? 'ar-SY-u-nu-latn' : 'en-US';
 }
 
 export function translateStatus(value: string, locale: Locale) {

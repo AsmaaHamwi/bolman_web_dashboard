@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Field, Input, Select } from '../../components/ui/Input';
+import { CityPicker } from '../../components/ui/CityPicker';
 import { useI18n } from '../../hooks/useI18n';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useBuses, useDrivers, useRestStops } from '../../hooks/useFleet';
@@ -179,22 +180,20 @@ export function CreateTripPage() {
           <CardTitle>{messages.company.trips.tripDetails}</CardTitle>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Field label={messages.company.trips.originCity}>
-              <Select
+              <CityPicker
+                cities={cities}
                 value={trip.origin_city_id}
-                onChange={(e) => setTrip({ ...trip, origin_city_id: e.target.value })}
-              >
-                <option value="">{messages.common.choose}</option>
-                {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
-              </Select>
+                onChange={(cityId) => setTrip({ ...trip, origin_city_id: cityId })}
+                placeholder={messages.common.choose}
+              />
             </Field>
             <Field label={messages.company.trips.destinationCity}>
-              <Select
+              <CityPicker
+                cities={cities}
                 value={trip.destination_city_id}
-                onChange={(e) => setTrip({ ...trip, destination_city_id: e.target.value })}
-              >
-                <option value="">{messages.common.choose}</option>
-                {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
-              </Select>
+                onChange={(cityId) => setTrip({ ...trip, destination_city_id: cityId })}
+                placeholder={messages.common.choose}
+              />
             </Field>
             <Field label={messages.common.bus}>
               <Select value={trip.bus_id} onChange={(e) => setTrip({ ...trip, bus_id: e.target.value })} disabled={!trip.origin_city_id}>
@@ -248,14 +247,14 @@ export function CreateTripPage() {
               <div className="mt-1 font-semibold text-slate-900 dark:text-white">{originCityName}</div>
               <div className="mt-2 text-xs text-slate-500">{messages.company.trips.departureTime}</div>
               <div className="font-mono text-sm">{trip.departure_datetime || '—'}</div>
-              <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{messages.company.trips.boardingAllowed}</div>
+              <div className="mt-2 text-xs text-sky-700 dark:text-sky-300">{messages.company.trips.boardingAllowed}</div>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
               <div className="text-xs font-bold uppercase text-slate-500">{messages.company.trips.destinationCity}</div>
               <div className="mt-1 font-semibold text-slate-900 dark:text-white">{destCityName}</div>
               <div className="mt-2 text-xs text-slate-500">{messages.company.trips.expectedArrival}</div>
               <div className="font-mono text-sm">{trip.expected_arrival_datetime || '—'}</div>
-              <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{messages.company.trips.dropoffAllowed}</div>
+              <div className="mt-2 text-xs text-sky-700 dark:text-sky-300">{messages.company.trips.dropoffAllowed}</div>
             </div>
           </div>
 

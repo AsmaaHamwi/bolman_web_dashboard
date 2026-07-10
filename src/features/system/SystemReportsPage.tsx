@@ -4,11 +4,16 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { KpiCard } from '../../components/dashboard/KpiCard';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { useI18n } from '../../hooks/useI18n';
+import { liveDashboardQueryOptions } from '../../lib/queryClient';
 import { getSystemKpis } from '../../services/report.service';
 import { formatMoney } from '../../utils/format';
 
 export function SystemReportsPage() {
-  const { data } = useQuery({ queryKey: ['system-kpis'], queryFn: getSystemKpis });
+  const { data } = useQuery({
+    queryKey: ['system-kpis'],
+    queryFn: getSystemKpis,
+    ...liveDashboardQueryOptions,
+  });
   const { messages } = useI18n();
 
   return (

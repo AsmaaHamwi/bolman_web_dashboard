@@ -10,7 +10,7 @@ export function Button({ className, variant = 'primary', ...props }: ButtonHTMLA
     secondary: 'bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 dark:bg-bolman-cardDark dark:text-white dark:border-bolman-borderDark dark:hover:bg-bolman-surfaceDark',
     ghost: 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-bolman-surfaceDark',
     danger: 'bg-red-500 text-white hover:bg-red-600',
-    mint: 'bg-bolman-mint text-slate-900 hover:bg-emerald-300'
+    mint: 'bg-bolman-mint text-bolman-deep hover:bg-violet-300 dark:text-white dark:hover:bg-bolman-purple/80'
   };
   return <button className={cx(base, variants[variant], className)} {...props} />;
 }

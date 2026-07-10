@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card, CardTitle } from '../../components/ui/Card';
@@ -17,15 +17,17 @@ import {
   getTripBookingCount,
   getTripDetails,
   getTripManifest,
+  getTripSeatSummary,
   getTripStops,
   updateTripOfferSettings,
   updateTripWithStops,
 } from '../../services/trip.service';
-import { formatDateTime, formatMoney } from '../../utils/format';
-import { buildTripStopsPayload, getTripStopLabel, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
+import { formatDateTime, formatMoney, getLocalDateInputValue } from '../../utils/format';
+import { buildTripStopsPayload, getFullRouteSegmentStopIds, getTripStopLabel, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
 
 export function CompanyTripDetailsPage() {
   const { tripId = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { messages } = useI18n();
   const company = useCompanyContext();
@@ -33,6 +35,12 @@ export function CompanyTripDetailsPage() {
   const stopsQuery = useQuery({ queryKey: ['trip-stops', tripId], queryFn: () => getTripStops(tripId), enabled: !!tripId });
   const manifestQuery = useQuery({ queryKey: ['trip-manifest', tripId], queryFn: () => getTripManifest(tripId), enabled: !!tripId });
   const bookingCountQuery = useQuery({ queryKey: ['trip-booking-count', tripId], queryFn: () => getTripBookingCount(tripId), enabled: !!tripId });
+  const routeSegment = getFullRouteSegmentStopIds(stopsQuery.data ?? []);
+  const seatSummaryQuery = useQuery({
+    queryKey: ['trip-seat-summary', tripId, routeSegment?.fromTripStopId, routeSegment?.toTripStopId],
+    queryFn: () => getTripSeatSummary(tripId, routeSegment!.fromTripStopId, routeSegment!.toTripStopId),
+    enabled: !!tripId && !!routeSegment,
+  });
   const companyId = (tripQuery.data?.company_id as string | undefined) ?? company.data ?? undefined;
   const { data: cities = [] } = useCities();
   const [openEdit, setOpenEdit] = useState(false);
@@ -90,6 +98,8 @@ export function CompanyTripDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ['trip', tripId] }),
         queryClient.invalidateQueries({ queryKey: ['trip-stops', tripId] }),
         queryClient.invalidateQueries({ queryKey: ['trip-booking-count', tripId] }),
+        queryClient.invalidateQueries({ queryKey: ['trip-seat-summary', tripId] }),
+        queryClient.invalidateQueries({ queryKey: ['trip-manifest', tripId] }),
         queryClient.invalidateQueries({ queryKey: ['trips'] }),
       ]);
       setOpenEdit(false);
@@ -115,6 +125,10 @@ export function CompanyTripDetailsPage() {
   const trip = tripQuery.data;
   const tripStops = stopsQuery.data ?? [];
   const manifest = manifestQuery.data ?? [];
+  const passengerCount = manifest.length;
+  const reservedSeats = seatSummaryQuery.data?.reserved;
+  const showReservedSeatsMismatch =
+    reservedSeats != null && !seatSummaryQuery.isPending && reservedSeats !== passengerCount;
 
   function openEditModal() {
     if (!trip) return;
@@ -167,6 +181,23 @@ export function CompanyTripDetailsPage() {
         subtitle={`Bus ${trip.bus?.number_bus || '-'} • Driver ${trip.driver?.user?.full_name || '-'}`}
         actions={
           <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => {
+                const travelDate = trip.departure_datetime
+                  ? getLocalDateInputValue(new Date(trip.departure_datetime))
+                  : '';
+                const params = new URLSearchParams({
+                  trip_id: tripId,
+                  origin_city_id: trip.origin_city_id ?? '',
+                  destination_city_id: trip.destination_city_id ?? '',
+                  travel_date: travelDate,
+                });
+                navigate(`/company/manual-booking?${params.toString()}`);
+              }}
+              disabled={trip.status === 'completed' || trip.status === 'cancelled'}
+            >
+              {messages.company.trips.bookOnThisTrip}
+            </Button>
             <Button variant="secondary" onClick={openEditModal}>{messages.company.trips.editTrip}</Button>
             <Button
               variant="mint"
@@ -209,8 +240,18 @@ export function CompanyTripDetailsPage() {
               <span>{trip.offer_is ? formatMoney(trip.price_offer) : '-'}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span>{messages.company.trips.bookingsCountLabel}</span>
-              <span>{bookingCountQuery.data ?? 0}</span>
+              <span title={messages.company.trips.passengersCountHint}>{messages.company.trips.passengersCountLabel}</span>
+              <span>{manifestQuery.isPending ? '…' : passengerCount}</span>
+            </div>
+            {showReservedSeatsMismatch ? (
+              <div className="flex items-center justify-between">
+                <span title={messages.company.trips.reservedSeatsHint}>{messages.company.trips.reservedSeatsLabel}</span>
+                <span>{reservedSeats}</span>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between">
+              <span>{messages.company.trips.availableSeatsLabel}</span>
+              <span>{seatSummaryQuery.isPending ? '…' : (seatSummaryQuery.data?.available ?? 0)}</span>
             </div>
           </div>
         </Card>

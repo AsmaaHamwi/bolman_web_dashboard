@@ -3,11 +3,16 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { DataTable, Td } from '../../components/ui/Table';
 import { StatusBadge } from '../../components/ui/Status';
 import { useI18n } from '../../hooks/useI18n';
+import { liveDashboardQueryOptions } from '../../lib/queryClient';
 import { listScanLogs } from '../../services/qr.service';
 import { formatDateTime } from '../../utils/format';
 
 export function ScanLogsPage() {
-  const { data = [], isPending } = useQuery({ queryKey: ['scan-logs'], queryFn: () => listScanLogs() });
+  const { data = [], isPending } = useQuery({
+    queryKey: ['scan-logs'],
+    queryFn: () => listScanLogs(),
+    ...liveDashboardQueryOptions,
+  });
   const { messages } = useI18n();
 
   return (

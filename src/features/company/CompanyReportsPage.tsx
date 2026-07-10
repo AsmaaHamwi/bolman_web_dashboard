@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, ClipboardList, Users, WalletCards } from 'lucide-react';
+import { CalendarDays, ClipboardList, Star, Users, WalletCards } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { KpiCard } from '../../components/dashboard/KpiCard';
 import { Card, CardTitle } from '../../components/ui/Card';
@@ -16,11 +16,16 @@ export function CompanyReportsPage() {
   return (
     <div>
       <PageHeader title={messages.company.reports.title} subtitle={messages.company.reports.subtitle} />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-5">
         <KpiCard title={messages.common.trips} value={data?.trips ?? 0} icon={CalendarDays} />
         <KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} icon={ClipboardList} />
         <KpiCard title={messages.common.passengers} value={data?.passengers ?? 0} icon={Users} />
         <KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} icon={WalletCards} />
+        <KpiCard
+          title={messages.common.avgRating}
+          value={data?.avgRating != null ? data.avgRating.toFixed(1) : '—'}
+          icon={Star}
+        />
       </div>
       <Card className="mt-6">
         <CardTitle>{messages.company.reports.noteTitle}</CardTitle>

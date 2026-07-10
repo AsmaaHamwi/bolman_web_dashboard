@@ -1,5 +1,30 @@
 import { supabase } from '../lib/supabase';
+import type { TripSearchRow } from '../types/domain';
+import { getSeatsStatus } from './seat.service';
 import { throwIfError } from './errors';
+
+export type TripManifestRow = {
+  booking_id: string;
+  booking_created_at: string;
+  passenger_id: string;
+  ticket_id: string | null;
+  passenger_name: string;
+  passenger_phone: string | null;
+  national_id: string;
+  seat_number: number | null;
+  ticket_status: string;
+  boarded_at: string | null;
+};
+
+export type TripSeatSummary = {
+  reserved: number;
+  locked: number;
+  available: number;
+  inactive: number;
+  total: number;
+};
+
+export const ACTIVE_BOOKING_STATUSES = ['confirmed', 'partially_boarded', 'boarded', 'completed'] as const;
 
 export type TripsListFilters = {
   search?: string;
@@ -45,13 +70,18 @@ export function sortTripsForList(trips: any[]) {
   });
 }
 
-export async function searchTrips(input: { origin_city_id: string; destination_city_id: string; travel_date: string }) {
+export async function searchTrips(input: {
+  origin_city_id: string;
+  destination_city_id: string;
+  travel_date: string;
+}): Promise<TripSearchRow[]> {
   const { data, error } = await supabase.rpc('search_trips', {
     p_origin_city_id: input.origin_city_id,
     p_destination_city_id: input.destination_city_id,
     p_travel_date: input.travel_date,
   });
-  throwIfError(error); return data ?? [];
+  throwIfError(error);
+  return (data ?? []) as TripSearchRow[];
 }
 
 export async function listTrips(companyId?: string | null, filters?: TripsListFilters) {
@@ -144,6 +174,35 @@ export async function getTripBookingCount(tripId: string) {
   return count ?? 0;
 }
 
+export async function getTripPassengerCount(tripId: string) {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('booking_passengers(id)')
+    .eq('trip_id', tripId)
+    .in('booking_status', [...ACTIVE_BOOKING_STATUSES]);
+  throwIfError(error);
+  return (data ?? []).reduce((sum, booking) => sum + (booking.booking_passengers?.length ?? 0), 0);
+}
+
+export async function getTripSeatSummary(
+  tripId: string,
+  fromTripStopId: string,
+  toTripStopId: string,
+): Promise<TripSeatSummary> {
+  const seats = await getSeatsStatus(tripId, fromTripStopId, toTripStopId);
+  return seats.reduce<TripSeatSummary>(
+    (summary, seat) => {
+      summary.total += 1;
+      if (seat.status === 'reserved') summary.reserved += 1;
+      else if (seat.status === 'locked') summary.locked += 1;
+      else if (seat.status === 'available') summary.available += 1;
+      else if (seat.status === 'inactive') summary.inactive += 1;
+      return summary;
+    },
+    { reserved: 0, locked: 0, available: 0, inactive: 0, total: 0 },
+  );
+}
+
 export async function updateTripWithStops(input: { trip_id: string; trip: any; stops: any[] }) {
   const { data, error } = await supabase.rpc('update_trip_with_stops', {
     p_trip_id: input.trip_id,
@@ -186,10 +245,73 @@ export async function completeTrip(tripId: string) {
   return data as string;
 }
 
-export async function getTripManifest(tripId: string) {
-  const { data, error } = await supabase.rpc('driver_trip_manifest', {
-    p_trip_id: tripId,
-  });
+export async function getTripManifest(tripId: string): Promise<TripManifestRow[]> {
+  const { data: bookings, error } = await supabase
+    .from('bookings')
+    .select(`
+      id,
+      created_at,
+      ticket_mode,
+      booking_passengers(id, full_name, phone, national_id, created_at),
+      booking_seats(id, bus_seat_id, created_at, seat:bus_seats(seat_number)),
+      tickets(id, booking_passenger_id, status, boarded_at, ticket_type)
+    `)
+    .eq('trip_id', tripId)
+    .in('booking_status', [...ACTIVE_BOOKING_STATUSES])
+    .order('created_at', { ascending: false });
+
   throwIfError(error);
-  return data ?? [];
+
+  const rows: TripManifestRow[] = [];
+
+  for (const booking of bookings ?? []) {
+    const passengers = [...(booking.booking_passengers ?? [])].sort(
+      (left: { created_at?: string; id?: string }, right: { created_at?: string; id?: string }) =>
+        compareByCreatedAtThenId(left, right),
+    );
+    const seats = [...(booking.booking_seats ?? [])].sort(
+      (left: { created_at?: string; id?: string }, right: { created_at?: string; id?: string }) =>
+        compareByCreatedAtThenId(left, right),
+    );
+    const tickets = booking.tickets ?? [];
+    const groupTicket = tickets.find((ticket: { ticket_type?: string }) => ticket.ticket_type === 'group');
+
+    passengers.forEach((passenger: {
+      id: string;
+      full_name: string;
+      phone: string | null;
+      national_id: string;
+    }, index: number) => {
+      const seat = seats[index] as { seat?: { seat_number?: number | null } } | undefined;
+      const individualTicket = tickets.find(
+        (ticket: { booking_passenger_id?: string | null }) => ticket.booking_passenger_id === passenger.id,
+      );
+      const ticket = individualTicket ?? groupTicket;
+
+      rows.push({
+        booking_id: booking.id,
+        booking_created_at: booking.created_at as string,
+        passenger_id: passenger.id,
+        ticket_id: ticket?.id ?? null,
+        passenger_name: passenger.full_name,
+        passenger_phone: passenger.phone,
+        national_id: passenger.national_id,
+        seat_number: seat?.seat?.seat_number ?? null,
+        ticket_status: ticket?.status ?? 'issued',
+        boarded_at: ticket?.boarded_at ?? null,
+      });
+    });
+  }
+
+  return rows;
+}
+
+function compareByCreatedAtThenId(
+  left: { created_at?: string; id?: string },
+  right: { created_at?: string; id?: string },
+) {
+  const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0;
+  const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0;
+  if (leftTime !== rightTime) return leftTime - rightTime;
+  return String(left.id ?? '').localeCompare(String(right.id ?? ''));
 }

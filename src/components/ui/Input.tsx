@@ -1,11 +1,14 @@
-import { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { forwardRef, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { cx } from '../../utils/format';
 
 const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-bolman-purple focus:ring-4 focus:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-white';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx(inputClass, className)} {...props} />;
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className, ...props },
+  ref,
+) {
+  return <input ref={ref} className={cx(inputClass, className)} {...props} />;
+});
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={cx(inputClass, className)} {...props} />;
