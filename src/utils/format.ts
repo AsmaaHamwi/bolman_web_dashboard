@@ -17,8 +17,30 @@ export function formatMoney(value?: number | string | null) {
 export function formatDateTime(value?: string | null) {
   if (!value) return '-';
 
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    const locale = getIntlLocale(getCurrentLocale());
+    const dateStr = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(d);
+    const timeStr = new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d);
+    return `${dateStr} • ${timeStr}`;
+  } catch {
+    return value;
+  }
+}
+
+export function formatDate(value?: string | null) {
+  if (!value) return '-';
+
   return new Intl.DateTimeFormat(getIntlLocale(getCurrentLocale()), {
     dateStyle: 'medium',
+  }).format(new Date(value));
+}
+
+export function formatTime(value?: string | null) {
+  if (!value) return '-';
+
+  return new Intl.DateTimeFormat(getIntlLocale(getCurrentLocale()), {
     timeStyle: 'short',
   }).format(new Date(value));
 }

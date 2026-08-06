@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, TdHTMLAttributes } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 
 type DataTableProps = {
@@ -19,7 +19,7 @@ export function DataTable({ columns, children, empty, loading = false, loadingRo
           <thead className="bg-slate-50 dark:bg-bolman-surfaceDark">
             <tr>
               {columns.map((column) => (
-                <th key={column} className="px-4 py-3 text-start font-bold text-slate-600 dark:text-slate-300">
+                <th key={column} className="px-4 py-3.5 text-start font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   {column}
                 </th>
               ))}
@@ -45,6 +45,6 @@ export function DataTable({ columns, children, empty, loading = false, loadingRo
   );
 }
 
-export function Td({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 text-slate-700 dark:text-slate-200 ${className}`}>{children}</td>;
+export function Td({ children, className = '', ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
+  return <td className={`px-4 py-3 text-slate-700 dark:text-slate-200 ${className}`} {...props}>{children}</td>;
 }

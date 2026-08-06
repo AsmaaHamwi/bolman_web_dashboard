@@ -1,6 +1,7 @@
+import { SeatMap } from '../../components/booking/SeatMap';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Bus, MapPin, Plus, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { DataTable, Td } from '../../components/ui/Table';
@@ -83,33 +84,40 @@ export function BusesPage() {
             <Td>{bus.total_seats}</Td>
             <Td>{bus.current_city?.name}</Td>
             <Td><StatusBadge value={bus.status} /></Td>
-            <Td>
-              <div className="flex flex-wrap gap-2">
-                <Button
+            <Td className="whitespace-nowrap">
+              <div className="flex items-center gap-1.5">
+                <button
                   type="button"
-                  variant="secondary"
+                  title={messages.company.buses.editStatus}
                   onClick={() => {
                     setActionError(null);
                     setStatusBus(bus);
                     setStatusValue(bus.status || 'available');
                   }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-bolman-purple hover:bg-bolman-purple/10 hover:text-bolman-purple dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-bolman-purple dark:hover:bg-bolman-purple/20 transition-all shadow-sm"
                 >
-                  {messages.company.buses.editStatus}
-                </Button>
-                <Button
+                  <ShieldCheck size={17} />
+                </button>
+                <button
                   type="button"
-                  variant="secondary"
+                  title={messages.company.buses.editCurrentCity}
                   onClick={() => {
                     setActionError(null);
                     setCityBus(bus);
                     setCityValue(bus.current_city_id || '');
                   }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 transition-all shadow-sm"
                 >
-                  {messages.company.buses.editCurrentCity}
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => setSeatsBus(bus)}>
-                  {messages.company.buses.viewSeats}
-                </Button>
+                  <MapPin size={17} />
+                </button>
+                <button
+                  type="button"
+                  title={messages.company.buses.viewSeats}
+                  onClick={() => setSeatsBus(bus)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-amber-500 hover:bg-amber-50 hover:text-amber-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-amber-500/50 dark:hover:bg-amber-500/10 transition-all shadow-sm"
+                >
+                  <Bus size={17} />
+                </button>
               </div>
             </Td>
           </tr>
@@ -127,7 +135,12 @@ export function BusesPage() {
             </Select>
           </Field>
           <Field label={messages.company.buses.seatCount}>
-            <Input type="number" value={form.total_seats} onChange={(e) => setForm({ ...form, total_seats: Number(e.target.value) })} />
+            <Input
+              type="number"
+              min={1}
+              value={form.total_seats}
+              onChange={(e) => setForm({ ...form, total_seats: Math.max(1, Number(e.target.value) || 1) })}
+            />
           </Field>
           <Field label={messages.common.currentCity}>
             <Select value={form.current_city_id} onChange={(e) => setForm({ ...form, current_city_id: e.target.value })}>
@@ -152,17 +165,11 @@ export function BusesPage() {
 
       <Modal open={!!seatsBus} onClose={() => setSeatsBus(null)} title={messages.company.buses.seatsModalTitle}>
         {seatsBus ? (
-          <div className="max-h-[60vh] overflow-y-auto text-sm">
+          <div className="max-h-[75vh] overflow-y-auto p-1">
             {seatsQuery.isPending ? (
-              <p>{messages.common.loading}</p>
+              <p className="text-center text-slate-500 py-6">{messages.common.loading}</p>
             ) : (
-              <ul className="grid grid-cols-4 gap-2">
-                {(seatsQuery.data ?? []).map((seat: any) => (
-                  <li key={seat.id} className="rounded-lg border border-slate-200 px-2 py-1 text-center dark:border-bolman-borderDark">
-                    #{seat.seat_number}
-                  </li>
-                ))}
-              </ul>
+              <SeatMap seats={seatsQuery.data ?? []} layoutType={seatsBus.seat_layout_type} readonly />
             )}
             <div className="mt-4 flex justify-end">
               <Button type="button" variant="secondary" onClick={() => setSeatsBus(null)}>{messages.common.close}</Button>

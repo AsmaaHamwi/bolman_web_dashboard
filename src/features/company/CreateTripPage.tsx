@@ -4,12 +4,13 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Field, Input, Select } from '../../components/ui/Input';
-import { CityPicker } from '../../components/ui/CityPicker';
+import { DateTimePicker } from '../../components/ui/DateTimePicker';
 import { useI18n } from '../../hooks/useI18n';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useBuses, useDrivers, useRestStops } from '../../hooks/useFleet';
 import { useCities } from '../../hooks/useCities';
 import { useCreateTrip } from '../../hooks/useTrips';
+import { formatDateTime } from '../../utils/format';
 import { buildTripStopsPayload, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
 
 type MiddleStopDraft = {
@@ -139,6 +140,16 @@ export function CreateTripPage() {
       return;
     }
 
+    if (typeof trip.price === 'number' && trip.price < 0) {
+      setError('السعر لا يمكن أن يكون سالباً');
+      return;
+    }
+
+    if (trip.offer_is && trip.price_offer !== null && Number(trip.price_offer) < 0) {
+      setError('سعر العرض لا يمكن أن يكون سالباً');
+      return;
+    }
+
     const validationError = validateTripStopSequence(
       {
         origin_city_id: trip.origin_city_id,
@@ -180,20 +191,22 @@ export function CreateTripPage() {
           <CardTitle>{messages.company.trips.tripDetails}</CardTitle>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Field label={messages.company.trips.originCity}>
-              <CityPicker
-                cities={cities}
+              <Select
                 value={trip.origin_city_id}
-                onChange={(cityId) => setTrip({ ...trip, origin_city_id: cityId })}
-                placeholder={messages.common.choose}
-              />
+                onChange={(e) => setTrip({ ...trip, origin_city_id: e.target.value })}
+              >
+                <option value="">{messages.common.choose}</option>
+                {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
+              </Select>
             </Field>
             <Field label={messages.company.trips.destinationCity}>
-              <CityPicker
-                cities={cities}
+              <Select
                 value={trip.destination_city_id}
-                onChange={(cityId) => setTrip({ ...trip, destination_city_id: cityId })}
-                placeholder={messages.common.choose}
-              />
+                onChange={(e) => setTrip({ ...trip, destination_city_id: e.target.value })}
+              >
+                <option value="">{messages.common.choose}</option>
+                {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
+              </Select>
             </Field>
             <Field label={messages.common.bus}>
               <Select value={trip.bus_id} onChange={(e) => setTrip({ ...trip, bus_id: e.target.value })} disabled={!trip.origin_city_id}>
@@ -208,13 +221,18 @@ export function CreateTripPage() {
               </Select>
             </Field>
             <Field label={messages.company.trips.departureTime}>
-              <Input type="datetime-local" value={trip.departure_datetime} onChange={(e) => setTrip({ ...trip, departure_datetime: e.target.value })} />
+              <DateTimePicker value={trip.departure_datetime} onChange={(val) => setTrip({ ...trip, departure_datetime: val })} />
             </Field>
             <Field label={messages.company.trips.expectedArrival}>
-              <Input type="datetime-local" value={trip.expected_arrival_datetime} onChange={(e) => setTrip({ ...trip, expected_arrival_datetime: e.target.value })} />
+              <DateTimePicker value={trip.expected_arrival_datetime} onChange={(val) => setTrip({ ...trip, expected_arrival_datetime: val })} />
             </Field>
             <Field label={messages.common.price}>
-              <Input type="number" value={trip.price} onChange={(e) => setTrip({ ...trip, price: Number(e.target.value) })} />
+              <Input
+                type="number"
+                min={0}
+                value={trip.price}
+                onChange={(e) => setTrip({ ...trip, price: Math.max(0, Number(e.target.value) || 0) })}
+              />
             </Field>
           </div>
           {trip.origin_city_id && !buses.length ? (
@@ -233,7 +251,15 @@ export function CreateTripPage() {
                 <Input value={trip.title_offer} onChange={(e) => setTrip({ ...trip, title_offer: e.target.value })} />
               </Field>
               <Field label={messages.company.trips.offerPrice}>
-                <Input type="number" value={trip.price_offer ?? ''} onChange={(e) => setTrip({ ...trip, price_offer: Number(e.target.value) })} />
+                <Input
+                  type="number"
+                  min={0}
+                  value={trip.price_offer ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setTrip({ ...trip, price_offer: raw === '' ? null : Math.max(0, Number(raw) || 0) });
+                  }}
+                />
               </Field>
             </div>
           )}
@@ -246,77 +272,107 @@ export function CreateTripPage() {
               <div className="text-xs font-bold uppercase text-slate-500">{messages.company.trips.originCity}</div>
               <div className="mt-1 font-semibold text-slate-900 dark:text-white">{originCityName}</div>
               <div className="mt-2 text-xs text-slate-500">{messages.company.trips.departureTime}</div>
-              <div className="font-mono text-sm">{trip.departure_datetime || '—'}</div>
-              <div className="mt-2 text-xs text-sky-700 dark:text-sky-300">{messages.company.trips.boardingAllowed}</div>
+              <div className="font-semibold text-sm text-slate-900 dark:text-white">{trip.departure_datetime ? formatDateTime(trip.departure_datetime) : '—'}</div>
+              <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{messages.company.trips.boardingAllowed}</div>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
               <div className="text-xs font-bold uppercase text-slate-500">{messages.company.trips.destinationCity}</div>
               <div className="mt-1 font-semibold text-slate-900 dark:text-white">{destCityName}</div>
               <div className="mt-2 text-xs text-slate-500">{messages.company.trips.expectedArrival}</div>
-              <div className="font-mono text-sm">{trip.expected_arrival_datetime || '—'}</div>
-              <div className="mt-2 text-xs text-sky-700 dark:text-sky-300">{messages.company.trips.dropoffAllowed}</div>
+              <div className="font-semibold text-sm text-slate-900 dark:text-white">{trip.expected_arrival_datetime ? formatDateTime(trip.expected_arrival_datetime) : '—'}</div>
+              <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">{messages.company.trips.dropoffAllowed}</div>
             </div>
           </div>
 
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 space-y-4">
             {middleStops.map((stop, index) => (
-              <div key={`mid-${index}`} className="grid gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-bolman-surfaceDark md:grid-cols-5">
-                <Select
-                  value={stop.stop_type}
-                  onChange={(e) =>
-                    setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, stop_type: e.target.value as 'city' | 'rest_stop' } : item)))
-                  }
-                >
-                  <option value="city">{messages.tripStopType.city}</option>
-                  <option value="rest_stop">{messages.tripStopType.restStop}</option>
-                </Select>
-                {stop.stop_type === 'city' ? (
-                  <Select
-                    value={stop.city_id || ''}
-                    onChange={(e) =>
-                      setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, city_id: e.target.value, rest_stop_id: null } : item)))
-                    }
-                  >
-                    <option value="">{messages.company.trips.chooseCity}</option>
-                    {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
-                  </Select>
-                ) : (
-                  <Select
-                    value={stop.rest_stop_id || ''}
-                    onChange={(e) =>
-                      setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, rest_stop_id: e.target.value, city_id: '' } : item)))
-                    }
-                  >
-                    <option value="">{messages.company.trips.chooseRestStop}</option>
-                    {rests.map((rest: any) => <option key={rest.id} value={rest.id}>{rest.name}</option>)}
-                  </Select>
-                )}
-                <Input type="datetime-local" value={stop.time_arrival || ''} onChange={(e) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_arrival: e.target.value } : item)))} />
-                <Input type="datetime-local" value={stop.time_departure || ''} onChange={(e) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_departure: e.target.value } : item)))} />
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={!!stop.is_boarding_allowed}
+              <div key={`mid-${index}`} className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 pb-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-bolman-purple/10 text-xs font-bold text-bolman-purple">
+                      {index + 1}
+                    </span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      محطة وسطية #{index + 1}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={!!stop.is_boarding_allowed}
+                        onChange={(e) =>
+                          setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, is_boarding_allowed: e.target.checked } : item)))
+                        }
+                      />
+                      {messages.company.trips.boardingAllowed}
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={!!stop.is_dropoff_allowed}
+                        onChange={(e) =>
+                          setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, is_dropoff_allowed: e.target.checked } : item)))
+                        }
+                      />
+                      {messages.company.trips.dropoffAllowed}
+                    </label>
+                    <Button variant="secondary" onClick={() => setMiddleStops(middleStops.filter((_, itemIndex) => itemIndex !== index))}>
+                      {messages.common.remove}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Field label="نوع المحطة">
+                    <Select
+                      value={stop.stop_type}
                       onChange={(e) =>
-                        setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, is_boarding_allowed: e.target.checked } : item)))
+                        setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, stop_type: e.target.value as 'city' | 'rest_stop' } : item)))
                       }
+                    >
+                      <option value="city">{messages.tripStopType.city}</option>
+                      <option value="rest_stop">{messages.tripStopType.restStop}</option>
+                    </Select>
+                  </Field>
+
+                  <Field label="المحطة">
+                    {stop.stop_type === 'city' ? (
+                      <Select
+                        value={stop.city_id || ''}
+                        onChange={(e) =>
+                          setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, city_id: e.target.value, rest_stop_id: null } : item)))
+                        }
+                      >
+                        <option value="">{messages.company.trips.chooseCity}</option>
+                        {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
+                      </Select>
+                    ) : (
+                      <Select
+                        value={stop.rest_stop_id || ''}
+                        onChange={(e) =>
+                          setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, rest_stop_id: e.target.value, city_id: '' } : item)))
+                        }
+                      >
+                        <option value="">{messages.company.trips.chooseRestStop}</option>
+                        {rests.map((rest: any) => <option key={rest.id} value={rest.id}>{rest.name}</option>)}
+                      </Select>
+                    )}
+                  </Field>
+
+                  <Field label="وقت الوصول">
+                    <DateTimePicker
+                      value={stop.time_arrival || ''}
+                      onChange={(val) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_arrival: val } : item)))}
                     />
-                    {messages.company.trips.boardingAllowed}
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={!!stop.is_dropoff_allowed}
-                      onChange={(e) =>
-                        setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, is_dropoff_allowed: e.target.checked } : item)))
-                      }
+                  </Field>
+
+                  <Field label="وقت المغادرة">
+                    <DateTimePicker
+                      value={stop.time_departure || ''}
+                      onChange={(val) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_departure: val } : item)))}
                     />
-                    {messages.company.trips.dropoffAllowed}
-                  </label>
-                  <Button variant="secondary" onClick={() => setMiddleStops(middleStops.filter((_, itemIndex) => itemIndex !== index))}>
-                    {messages.common.remove}
-                  </Button>
+                  </Field>
                 </div>
               </div>
             ))}

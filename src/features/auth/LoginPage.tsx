@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Lock, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { registerWebFcmToken } from '../../lib/firebase';
 import { useAuth } from './AuthProvider';
 import { HeroBanner } from '../../components/animations/HeroBanner';
 import { Button } from '../../components/ui/Button';
@@ -24,15 +25,52 @@ export function LoginPage() {
 
   if (session) return <Navigate to={getDefaultDashboardPath(profile)} replace />;
 
+  function getFormattedErrorMessage(rawMessage?: string): string {
+    if (!rawMessage) return messages.auth.errorGeneric;
+    const msg = rawMessage.toLowerCase();
+
+    if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('fetch failed')) {
+      return messages.auth.errorFailedToFetch;
+    }
+    if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
+      return messages.auth.errorInvalidCredentials;
+    }
+    if (msg.includes('email not confirmed')) {
+      return messages.auth.errorEmailNotConfirmed;
+    }
+    if (msg.includes('user not found') || msg.includes('user_not_found')) {
+      return messages.auth.errorUserNotFound;
+    }
+    if (msg.includes('too many requests') || msg.includes('rate limit')) {
+      return messages.auth.errorTooManyRequests;
+    }
+    return rawMessage;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) setError(error.message);
-    setLoading(false);
+      if (error) {
+        setError(getFormattedErrorMessage(error.message));
+        return;
+      }
+
+      if ('Notification' in window) {
+        const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+        if (permission === 'granted') {
+          await registerWebFcmToken();
+        }
+      }
+    } catch (err: any) {
+      setError(getFormattedErrorMessage(err?.message));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

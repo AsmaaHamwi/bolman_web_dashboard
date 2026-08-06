@@ -1,11 +1,29 @@
-/* Configure Firebase messaging service worker for production if web push is enabled. */
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.notification?.title || 'Bolman';
+importScripts('https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: 'AIzaSyBRiMjraiaL2UUohfTjswkPj3C3td9lsn4',
+  authDomain: 'safarbus-2b9b0.firebaseapp.com',
+  projectId: 'safarbus-2b9b0',
+  storageBucket: 'safarbus-2b9b0.firebasestorage.app',
+  messagingSenderId: '771850549676',
+  appId: '1:771850549676:web:f58b8f04cb9a48f8c62209',
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+  const title = payload.notification?.title || 'Bolman';
   const options = {
-    body: data.notification?.body || '',
+    body: payload.notification?.body || '',
     icon: '/logo.svg',
-    data: data.data || {},
+    data: payload.data || {},
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+
+  self.registration.showNotification(title, options);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow('/'));
 });

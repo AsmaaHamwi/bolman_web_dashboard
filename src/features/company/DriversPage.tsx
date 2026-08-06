@@ -12,6 +12,7 @@ import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useDrivers } from '../../hooks/useFleet';
 import { createUserViaEdge, updateUserStatusViaEdge } from '../../services/auth.service';
 import { hasActiveTripForDriver, updateDriverRecord, updateUserProfile } from '../../services/fleet.service';
+import { sanitizeName, sanitizePositiveDigits } from '../../utils/validation';
 
 export function DriversPage() {
   const queryClient = useQueryClient();
@@ -133,13 +134,13 @@ export function DriversPage() {
       <Modal open={open} onClose={() => setOpen(false)} title={messages.company.drivers.modalTitle}>
         <div className="grid gap-4">
           <Field label={messages.common.name}>
-            <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+            <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: sanitizeName(e.target.value) })} />
           </Field>
           <Field label={messages.common.email}>
             <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
           <Field label={messages.common.phone}>
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <Input inputMode="numeric" value={form.phone} onChange={(e) => setForm({ ...form, phone: sanitizePositiveDigits(e.target.value) })} />
           </Field>
           <Field label={messages.company.drivers.licenseNumber}>
             <Input value={form.license_number} onChange={(e) => setForm({ ...form, license_number: e.target.value })} />
@@ -152,10 +153,10 @@ export function DriversPage() {
         {editing ? (
           <div className="grid gap-4">
             <Field label={messages.common.name}>
-              <Input value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })} />
+              <Input value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: sanitizeName(e.target.value) })} />
             </Field>
             <Field label={messages.common.phone}>
-              <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+              <Input inputMode="numeric" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: sanitizePositiveDigits(e.target.value) })} />
             </Field>
             <Field label={messages.company.drivers.licenseNumber}>
               <Input value={editForm.license_number} onChange={(e) => setEditForm({ ...editForm, license_number: e.target.value })} />

@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
+import { Eye, Loader2, QrCode, SquarePen } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { DataTable, Td } from '../../components/ui/Table';
 import { StatusBadge } from '../../components/ui/Status';
 import { Button } from '../../components/ui/Button';
-import { TicketQrModal } from '../../components/booking/TicketQrModal';
+import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
-import { StarRating } from '../../components/ui/StarRating';
 import { BOOKINGS_PAGE_SIZE } from '../../services/booking.service';
 import { useI18n } from '../../hooks/useI18n';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useBookings } from '../../hooks/useBookings';
 import { getBookingDetails } from '../../services/booking.service';
-import { BookingsFilterBar, getDefaultBookingsFilters, hasCustomBookingsFilters } from './BookingsFilterBar';
+import { BookingsFilterBar, EMPTY_BOOKINGS_FILTERS } from './BookingsFilterBar';
 import type { BookingsListFilters } from '../../services/booking.service';
 import { formatDateTime, formatMoney } from '../../utils/format';
-import { bookerDisplay } from '../../utils/bookingDisplay';
 
 function seatNumbersFromBooking(row: any): string {
   const seats = row.booking_seats ?? [];
@@ -26,14 +25,28 @@ function seatNumbersFromBooking(row: any): string {
     .join(', ');
 }
 
+function bookerDisplay(row: any, officeLabel: string) {
+  return row.booker?.full_name?.trim() || row.creator?.full_name?.trim() || officeLabel;
+}
+
 function paymentMethodFirst(row: any): string {
   const p = row.payments;
   if (Array.isArray(p) && p[0]?.payment_method) return String(p[0].payment_method);
   return '-';
 }
 
+function qrPayloads(row: any): string[] {
+  const tickets = row.tickets ?? [];
+  const mode = row.ticket_mode;
+  if (mode === 'group') {
+    const t = tickets.find((x: any) => x.ticket_type === 'group' && x.qr_token);
+    return t?.qr_token ? [String(t.qr_token)] : [];
+  }
+  return tickets.filter((x: any) => x.qr_token).map((x: any) => String(x.qr_token));
+}
+
 function hasActiveFilters(filters: BookingsListFilters) {
-  return hasCustomBookingsFilters(filters);
+  return Object.values(filters).some((value) => String(value ?? '').trim() !== '');
 }
 
 function filtersEqual(a: BookingsListFilters, b: BookingsListFilters) {
@@ -48,27 +61,18 @@ function filtersEqual(a: BookingsListFilters, b: BookingsListFilters) {
   );
 }
 
-function bookingRatingCell(booking: any, messages: { common: { notApplicable: string }; company: { bookings: { ratingPending: string } } }) {
-  const value = booking.rating_value != null ? Number(booking.rating_value) : null;
-  if (value != null) return <StarRating value={value} />;
-  if (booking.booking_status === 'completed') {
-    return <StarRating value={null} emptyLabel={messages.company.bookings.ratingPending} />;
-  }
-  return <StarRating value={null} emptyLabel={messages.common.notApplicable} />;
-}
-
 export function CompanyBookingsPage() {
+  const navigate = useNavigate();
   const company = useCompanyContext();
   const companyId = company.data;
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<BookingsListFilters>(() => getDefaultBookingsFilters());
-  const [queryFilters, setQueryFilters] = useState<BookingsListFilters>(() => getDefaultBookingsFilters());
+  const [filters, setFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
+  const [queryFilters, setQueryFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
   const { data, isPending, error, isError, isFetching } = useBookings(companyId, {
     enabled: !!companyId,
     page,
     pageSize: BOOKINGS_PAGE_SIZE,
     filters: queryFilters,
-    live: true,
   });
   const bookings = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -77,8 +81,7 @@ export function CompanyBookingsPage() {
   const { messages } = useI18n();
   const loading = company.isPending || isPending;
   const filtersPending = !filtersEqual(filters, queryFilters);
-  const tableLoading = (loading || filtersPending) && !bookings.length;
-  const refreshing = isFetching && !!bookings.length;
+  const tableLoading = loading || isFetching || filtersPending;
   const [qrBooking, setQrBooking] = useState<any | null>(null);
   const [qrLoadingId, setQrLoadingId] = useState<string | null>(null);
 
@@ -106,17 +109,7 @@ export function CompanyBookingsPage() {
   );
 
   const officeLabel = messages.company.bookings.officeBookingLabel;
-  const shareCopy = {
-    heading: messages.company.bookings.shareHeading,
-    route: messages.company.bookings.shareRoute,
-    departure: messages.company.bookings.shareDeparture,
-    bus: messages.company.bookings.shareBus,
-    seats: messages.company.bookings.shareSeats,
-    passenger: messages.company.bookings.sharePassenger,
-    ticketCode: messages.company.bookings.shareTicketCode,
-    scanHint: messages.company.bookings.shareScanHint,
-    routeArrow: '→',
-  };
+  const qrTokens = qrBooking ? qrPayloads(qrBooking) : [];
 
   return (
     <div>
@@ -125,11 +118,11 @@ export function CompanyBookingsPage() {
       <BookingsFilterBar
         filters={filters}
         onChange={setFilters}
-        onReset={() => setFilters(getDefaultBookingsFilters())}
+        onReset={() => setFilters(EMPTY_BOOKINGS_FILTERS)}
         loading={tableLoading}
       />
 
-      {tableLoading || refreshing ? (
+      {tableLoading ? (
         <div
           className="mb-4 flex items-center gap-2 rounded-2xl border border-bolman-purple/20 bg-bolman-purple/5 px-4 py-3 text-sm font-medium text-bolman-purple dark:border-bolman-purple/30 dark:bg-bolman-purple/10 dark:text-violet-200"
           role="status"
@@ -171,11 +164,13 @@ export function CompanyBookingsPage() {
       ) : (
         <DataTable columns={columns} loading={tableLoading} loadingRows={8} empty={false}>
           {bookings.map((booking: any) => (
-            <tr key={booking.id}>
-              <Td className="font-mono text-xs">
-                <Link to={`/company/bookings/${booking.id}`} className="text-bolman-purple hover:underline">
-                  {booking.id.slice(0, 8)}
-                </Link>
+            <tr
+              key={booking.id}
+              onClick={() => navigate(`/company/bookings/${booking.id}`)}
+              className="group cursor-pointer transition-colors hover:bg-slate-100/80 dark:hover:bg-bolman-surfaceDark/80"
+            >
+              <Td className="font-mono text-xs font-bold text-bolman-purple group-hover:underline">
+                {booking.id.slice(0, 8)}
               </Td>
               <Td>{bookerDisplay(booking, officeLabel)}</Td>
               <Td>
@@ -191,20 +186,22 @@ export function CompanyBookingsPage() {
               <Td>{paymentMethodFirst(booking)}</Td>
               <Td>{booking.ticket_mode === 'group' ? messages.ticketMode.qrGroup : messages.ticketMode.qrIndividual}</Td>
               <Td><StatusBadge value={booking.booking_status} /></Td>
-              <Td>{bookingRatingCell(booking, messages)}</Td>
-              <Td>
-                <div className="flex flex-wrap gap-2">
+              <Td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5">
                   <Link
                     to={`/company/bookings/${booking.id}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-bolman-borderDark dark:bg-bolman-cardDark dark:text-white dark:hover:bg-bolman-surfaceDark"
+                    title={messages.company.bookings.actionDetails}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-bolman-purple hover:bg-bolman-purple/10 hover:text-bolman-purple dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-bolman-purple dark:hover:bg-bolman-purple/20 transition-all shadow-sm"
                   >
-                    {messages.company.bookings.actionDetails}
+                    <Eye size={17} />
                   </Link>
-                  <Button
+
+                  <button
                     type="button"
-                    variant="secondary"
+                    title={messages.company.bookings.actionQr}
                     disabled={qrLoadingId === booking.id}
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation();
                       setQrLoadingId(booking.id);
                       try {
                         const details = await getBookingDetails(booking.id);
@@ -213,14 +210,17 @@ export function CompanyBookingsPage() {
                         setQrLoadingId(null);
                       }
                     }}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 transition-all shadow-sm disabled:opacity-50"
                   >
-                    {messages.company.bookings.actionQr}
-                  </Button>
+                    {qrLoadingId === booking.id ? <Loader2 size={16} className="animate-spin" /> : <QrCode size={17} />}
+                  </button>
+
                   <Link
                     to={`/company/bookings/${booking.id}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-bolman-borderDark dark:bg-bolman-cardDark dark:text-white dark:hover:bg-bolman-surfaceDark"
+                    title={messages.company.bookings.actionModifyCancel}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-amber-500 hover:bg-amber-50 hover:text-amber-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-amber-500/50 dark:hover:bg-amber-500/10 transition-all shadow-sm"
                   >
-                    {messages.company.bookings.actionModifyCancel}
+                    <SquarePen size={17} />
                   </Link>
                 </div>
               </Td>
@@ -238,20 +238,31 @@ export function CompanyBookingsPage() {
         />
       ) : null}
 
-      <TicketQrModal
-        open={!!qrBooking}
-        onClose={() => setQrBooking(null)}
-        booking={qrBooking}
-        title={messages.company.bookings.qrModalTitle}
-        emptyLabel={messages.company.bookings.noQrTokens}
-        shareLabel={messages.company.bookings.shareTicket}
-        shareFailedLabel={messages.company.bookings.shareFailed}
-        shareDownloadedLabel={messages.company.bookings.shareDownloaded}
-        groupTicketLabel={messages.ticketMode.qrGroup}
-        individualTicketLabel={messages.ticketMode.qrIndividual}
-        closeLabel={messages.common.close}
-        shareCopy={shareCopy}
-      />
+      <Modal open={!!qrBooking} onClose={() => setQrBooking(null)} title={messages.company.bookings.qrModalTitle}>
+        {qrBooking ? (
+          <div className="grid gap-4">
+            {!qrTokens.length ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">{messages.company.bookings.noQrTokens}</p>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-6">
+                {qrTokens.map((token, index) => (
+                  <div key={`${token}-${index}`} className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
+                    <QRCodeSVG value={token} size={160} level="M" />
+                    <span className="max-w-[200px] truncate font-mono text-xs text-slate-500" title={token}>
+                      {token.slice(0, 24)}…
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <Button variant="secondary" type="button" onClick={() => setQrBooking(null)}>
+                {messages.common.close}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

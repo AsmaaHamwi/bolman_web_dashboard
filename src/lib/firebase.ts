@@ -15,8 +15,15 @@ export const firebaseApp = getApps().length ? getApps()[0] : initializeApp(fireb
 
 export async function registerWebFcmToken() {
   if (!(await isSupported())) return null;
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return null;
+  if (!('serviceWorker' in navigator)) return null;
+
   const messaging = getMessaging(firebaseApp);
-  const token = await getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+  const serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  const token = await getToken(messaging, {
+    vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+    serviceWorkerRegistration,
+  });
   if (!token) return null;
   await supabase.rpc('register_fcm_token', {
     p_token: token,

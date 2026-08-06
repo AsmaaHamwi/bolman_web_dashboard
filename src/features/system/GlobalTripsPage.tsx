@@ -3,7 +3,7 @@ import { DataTable, Td } from '../../components/ui/Table';
 import { StatusBadge } from '../../components/ui/Status';
 import { useI18n } from '../../hooks/useI18n';
 import { useTrips } from '../../hooks/useTrips';
-import { formatDateTime, formatMoney } from '../../utils/format';
+import { formatDate, formatMoney, formatTime } from '../../utils/format';
 
 export function GlobalTripsPage() {
   const { data = [], isPending } = useTrips(undefined, { live: true });
@@ -19,7 +19,8 @@ export function GlobalTripsPage() {
             <Td className="font-bold">{trip.origin?.name} ← {trip.destination?.name}</Td>
             <Td>{trip.bus?.number_bus}</Td>
             <Td>{trip.driver?.user?.full_name}</Td>
-            <Td>{formatDateTime(trip.departure_datetime)}</Td>
+            <Td>{formatDate(trip.departure_datetime)}</Td>
+            <Td>{formatTime(trip.departure_datetime)}</Td>
             <Td>{formatMoney(trip.price_offer ?? trip.price)}</Td>
             <Td><StatusBadge value={trip.status} /></Td>
           </tr>

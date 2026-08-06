@@ -5,7 +5,7 @@ import { PageHeader } from '../../../components/layout/PageHeader';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Card, CardTitle } from '../../../components/ui/Card';
-import { Field, Input, Textarea } from '../../../components/ui/Input';
+import { Field, Input, Select, Textarea } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { DataTable, Td } from '../../../components/ui/Table';
 import { useAuth } from '../../auth/AuthProvider';
@@ -25,6 +25,15 @@ import { cx, formatDateTime, formatMoney } from '../../../utils/format';
 type WalletAction = 'topup' | 'withdraw';
 type FeedbackTone = 'success' | 'error';
 
+const SOURCE_OPTIONS = [
+  { value: 'office', label: 'المكتب (مكتبي)' },
+  { value: 'mtn_cash', label: 'MTN Cash' },
+  { value: 'syriatel_cash', label: 'Syriatel Cash' },
+  { value: 'adjustment', label: 'تعديل / تسوية رصيد' },
+  { value: 'booking', label: 'حجز' },
+  { value: 'refund', label: 'استرداد' },
+];
+
 export function CompanyWalletsPage() {
   const { profile } = useAuth();
   const { messages } = useI18n();
@@ -33,6 +42,7 @@ export function CompanyWalletsPage() {
   const [search, setSearch] = useState('');
   const [selectedPassenger, setSelectedPassenger] = useState<WalletPassengerSearchResult | null>(null);
   const [action, setAction] = useState<WalletAction | null>(null);
+  const [sourceType, setSourceType] = useState<string>('office');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [feedback, setFeedback] = useState<{ tone: FeedbackTone; message: string } | null>(null);
@@ -73,12 +83,13 @@ export function CompanyWalletsPage() {
 
   function resetAction() {
     setAction(null);
+    setSourceType('office');
     setAmount('');
     setNotes('');
   }
 
   const topupMutation = useMutation({
-    mutationFn: () => officeWalletTopup(selectedPassenger!.user_id, parsedAmount, notes),
+    mutationFn: (formattedNotes?: string) => officeWalletTopup(selectedPassenger!.user_id, parsedAmount, formattedNotes ?? notes),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['wallet'] });
       setFeedback({ tone: 'success', message: messages.company.wallets.topupSuccess });
@@ -90,7 +101,7 @@ export function CompanyWalletsPage() {
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: () => officeWalletWithdraw(selectedPassenger!.user_id, parsedAmount, notes),
+    mutationFn: (formattedNotes?: string) => officeWalletWithdraw(selectedPassenger!.user_id, parsedAmount, formattedNotes ?? notes),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['wallet'] });
       setFeedback({ tone: 'success', message: messages.company.wallets.withdrawSuccess });
@@ -114,8 +125,12 @@ export function CompanyWalletsPage() {
       return;
     }
 
-    if (action === 'topup') topupMutation.mutate();
-    if (action === 'withdraw') withdrawMutation.mutate();
+    const selectedSourceLabel = SOURCE_OPTIONS.find((s) => s.value === sourceType)?.label || sourceType;
+    const sourcePrefix = sourceType !== 'office' ? `[المصدر: ${selectedSourceLabel}]` : '';
+    const fullNotes = [sourcePrefix, notes.trim()].filter(Boolean).join(' ');
+
+    if (action === 'topup') topupMutation.mutate(fullNotes);
+    if (action === 'withdraw') withdrawMutation.mutate(fullNotes);
   }
 
   if (profile?.role === 'company_staff' && companyPermissions.isPending) {
@@ -131,7 +146,33 @@ export function CompanyWalletsPage() {
     );
   }
 
-  const transactions = transactionsQuery.data ?? [];
+  const rawTransactions = transactionsQuery.data ?? [];
+
+  const transactions = useMemo(() => {
+    if (!rawTransactions.length) return [];
+
+    // Transactions from API are sorted newest first.
+    // We compute balance_after backwards starting from the current actual wallet balance.
+    let running = currentBalance;
+
+    return rawTransactions.map((tx) => {
+      if (tx.balance_after != null) {
+        const explicit = Number(tx.balance_after);
+        const isEffective = tx.status !== 'failed';
+        const amt = isEffective ? Number(tx.amount || 0) : 0;
+        running = tx.transaction_type === 'credit' ? explicit - amt : explicit + amt;
+        return { ...tx, computed_balance_after: explicit };
+      }
+
+      const currentTxBalance = running;
+      const isEffective = tx.status !== 'failed';
+      const amt = isEffective ? Number(tx.amount || 0) : 0;
+      running = tx.transaction_type === 'credit' ? running - amt : running + amt;
+
+      return { ...tx, computed_balance_after: Math.max(0, currentTxBalance) };
+    });
+  }, [rawTransactions, currentBalance]);
+
   const submitting = topupMutation.isPending || withdrawMutation.isPending;
 
   return (
@@ -153,155 +194,172 @@ export function CompanyWalletsPage() {
 
       <Card>
         <CardTitle>{messages.company.wallets.searchTitle}</CardTitle>
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <div className="space-y-4">
-            <Field label={messages.company.wallets.searchLabel}>
-              <div className="relative">
-                <Search className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <Input
-                  className="ps-11"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setFeedback(null);
-                  }}
-                  placeholder={messages.company.wallets.searchPlaceholder}
-                />
-              </div>
-            </Field>
+        <div className="mt-4 space-y-4">
+          <Field label={messages.company.wallets.searchLabel}>
+            <div className="relative">
+              <Search className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Input
+                className="ps-11"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setFeedback(null);
+                }}
+                placeholder={messages.company.wallets.searchPlaceholder}
+              />
+            </div>
+          </Field>
 
-            <p className="text-sm text-slate-500 dark:text-slate-400">{messages.company.wallets.directoryHint}</p>
-            {passengersQuery.isError ? (
-              <p className="text-sm text-red-600 dark:text-red-300">{(passengersQuery.error as Error).message}</p>
-            ) : null}
+          <p className="text-sm text-slate-500 dark:text-slate-400">{messages.company.wallets.directoryHint}</p>
+          {passengersQuery.isError ? (
+            <p className="text-sm text-red-600 dark:text-red-300">{(passengersQuery.error as Error).message}</p>
+          ) : null}
 
-            <DataTable
-              columns={messages.company.wallets.passengerTable as unknown as string[]}
-              loading={passengersQuery.isPending && !passengersQuery.data}
-              empty={!passengersQuery.isPending && passengers.length === 0}
-            >
-              {passengers.map((passenger) => (
-                <tr
-                  key={passenger.user_id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
+          <DataTable
+            columns={messages.company.wallets.passengerTable as unknown as string[]}
+            loading={passengersQuery.isPending && !passengersQuery.data}
+            empty={!passengersQuery.isPending && passengers.length === 0}
+          >
+            {passengers.map((passenger) => (
+              <tr
+                key={passenger.user_id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelectedPassenger(passenger);
+                  setFeedback(null);
+                  resetAction();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
                     setSelectedPassenger(passenger);
                     setFeedback(null);
                     resetAction();
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedPassenger(passenger);
-                      setFeedback(null);
-                      resetAction();
-                    }
-                  }}
-                  className={cx(
-                    'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-bolman-surfaceDark/80',
-                    selectedPassenger?.user_id === passenger.user_id
-                      ? 'bg-bolman-purple/5 dark:bg-bolman-purple/15'
-                      : '',
-                  )}
-                >
-                  <Td className="max-w-[14rem] whitespace-normal font-semibold text-slate-900 dark:text-white">
-                    {passenger.full_name}
-                  </Td>
-                  <Td className="whitespace-nowrap">{passenger.phone || '-'}</Td>
-                  <Td className="max-w-[12rem] truncate">
-                    <span title={passenger.email ?? undefined}>{passenger.email || '-'}</span>
-                  </Td>
-                  <Td className="font-semibold text-bolman-purple">{formatMoney(passenger.balance)}</Td>
-                </tr>
-              ))}
-            </DataTable>
+                  }
+                }}
+                className={cx(
+                  'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-bolman-surfaceDark/80',
+                  selectedPassenger?.user_id === passenger.user_id
+                    ? 'bg-bolman-purple/10 dark:bg-bolman-purple/20'
+                    : '',
+                )}
+              >
+                <Td className="whitespace-nowrap font-bold text-slate-900 dark:text-white">
+                  {passenger.full_name}
+                </Td>
+                <Td className="whitespace-nowrap font-mono">{passenger.phone || '-'}</Td>
+                <Td className="whitespace-nowrap font-mono text-slate-500">
+                  <span title={passenger.email ?? undefined}>{passenger.email || '-'}</span>
+                </Td>
+                <Td className="whitespace-nowrap font-bold text-bolman-purple">{formatMoney(passenger.balance)}</Td>
+              </tr>
+            ))}
+          </DataTable>
 
-            {passengersQuery.hasNextPage ? (
-              <div className="flex justify-center">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => passengersQuery.fetchNextPage()}
-                  disabled={passengersQuery.isFetchingNextPage}
-                >
-                  {passengersQuery.isFetchingNextPage ? messages.common.loading : messages.company.wallets.loadMore}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-
-          <div>
-            {!selectedPassenger ? (
-              <div className="grid h-full min-h-56 place-items-center rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-bolman-borderDark dark:text-slate-400">
-                {messages.company.wallets.selectPassengerHint}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <Card className="border-bolman-purple/10 bg-gradient-to-br from-bolman-purple/5 via-white to-bolman-mint/10 dark:from-bolman-purple/10 dark:via-bolman-cardDark dark:to-bolman-mint/10">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        {messages.company.wallets.passengerCardTitle}
-                      </p>
-                      <h2 className="text-xl font-black text-slate-950 dark:text-white">
-                        {summaryQuery.data?.full_name ?? selectedPassenger.full_name}
-                      </h2>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        {summaryQuery.data?.phone ?? selectedPassenger.phone ?? '-'} · {summaryQuery.data?.email ?? selectedPassenger.email ?? '-'}
-                      </p>
-                    </div>
-                    <div className="rounded-3xl bg-white/80 px-5 py-4 text-center shadow-soft dark:bg-bolman-surfaceDark">
-                      <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                        <WalletCards size={18} />
-                        {messages.company.wallets.currentBalance}
-                      </div>
-                      <p className="mt-2 text-3xl font-black text-bolman-purple">{formatMoney(currentBalance)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Button onClick={() => setAction('topup')}>{messages.company.wallets.topupButton}</Button>
-                    <Button variant="mint" onClick={() => setAction('withdraw')}>{messages.company.wallets.withdrawButton}</Button>
-                  </div>
-                </Card>
-
-                <Card>
-                  <CardTitle>{messages.company.wallets.transactionsTitle}</CardTitle>
-                  <div className="mt-4">
-                    <DataTable columns={messages.company.wallets.table as unknown as string[]} loading={transactionsQuery.isPending} empty={!transactionsQuery.isPending && !transactions.length}>
-                      {transactions.map((transaction) => (
-                        <tr key={transaction.transaction_id}>
-                          <Td>{formatDateTime(transaction.created_at)}</Td>
-                          <Td>
-                            <Badge tone={transaction.transaction_type === 'credit' ? 'green' : 'red'}>
-                              {transaction.transaction_type === 'credit' ? messages.company.wallets.credit : messages.company.wallets.debit}
-                            </Badge>
-                          </Td>
-                          <Td>{messages.company.wallets.sourceLabels[transaction.source_type] ?? transaction.source_type}</Td>
-                          <Td className="font-semibold">{formatMoney(transaction.amount)}</Td>
-                          <Td>{transaction.balance_after == null ? '-' : formatMoney(transaction.balance_after)}</Td>
-                          <Td>{transaction.performed_by_name ?? '-'}</Td>
-                          <Td>{transaction.notes || '-'}</Td>
-                        </tr>
-                      ))}
-                    </DataTable>
-                  </div>
-                </Card>
-              </div>
-            )}
-          </div>
+          {passengersQuery.hasNextPage ? (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => passengersQuery.fetchNextPage()}
+                disabled={passengersQuery.isFetchingNextPage}
+              >
+                {passengersQuery.isFetchingNextPage ? messages.common.loading : messages.company.wallets.loadMore}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </Card>
+
+      {!selectedPassenger ? (
+        <div className="grid min-h-36 place-items-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-500 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark/40 dark:text-slate-400">
+          {messages.company.wallets.selectPassengerHint}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <Card className="border-bolman-purple/15 bg-gradient-to-r from-bolman-purple/10 via-white to-bolman-mint/15 dark:from-bolman-purple/20 dark:via-bolman-cardDark dark:to-bolman-mint/20 shadow-md">
+            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-bolman-purple">
+                  {messages.company.wallets.passengerCardTitle}
+                </p>
+                <h2 className="text-2xl font-black text-slate-950 dark:text-white">
+                  {summaryQuery.data?.full_name ?? selectedPassenger.full_name}
+                </h2>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {summaryQuery.data?.phone ?? selectedPassenger.phone ?? '-'} · {summaryQuery.data?.email ?? selectedPassenger.email ?? '-'}
+                </p>
+              </div>
+              <div className="flex items-center gap-4 rounded-3xl border border-slate-200/80 bg-white/90 px-6 py-4 shadow-sm dark:border-slate-700 dark:bg-bolman-surfaceDark">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bolman-purple/10 text-bolman-purple">
+                  <WalletCards size={24} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {messages.company.wallets.currentBalance}
+                  </div>
+                  <p className="text-2xl font-black text-bolman-purple">{formatMoney(currentBalance)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3 border-t border-slate-200/60 pt-4 dark:border-slate-800">
+              <Button onClick={() => { setSourceType('office'); setAction('topup'); }}>
+                {messages.company.wallets.topupButton}
+              </Button>
+              <Button variant="mint" onClick={() => { setSourceType('office'); setAction('withdraw'); }}>
+                {messages.company.wallets.withdrawButton}
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <CardTitle>{messages.company.wallets.transactionsTitle}</CardTitle>
+            <div className="mt-4">
+              <DataTable columns={messages.company.wallets.table as unknown as string[]} loading={transactionsQuery.isPending} empty={!transactionsQuery.isPending && !transactions.length}>
+                {transactions.map((transaction) => (
+                  <tr key={transaction.transaction_id}>
+                    <Td className="whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-300">{formatDateTime(transaction.created_at)}</Td>
+                    <Td className="whitespace-nowrap">
+                      <Badge tone={transaction.transaction_type === 'credit' ? 'green' : 'red'}>
+                        {transaction.transaction_type === 'credit' ? messages.company.wallets.credit : messages.company.wallets.debit}
+                      </Badge>
+                    </Td>
+                    <Td className="whitespace-nowrap font-medium">{messages.company.wallets.sourceLabels[transaction.source_type] ?? transaction.source_type}</Td>
+                    <Td className="whitespace-nowrap font-bold text-slate-900 dark:text-white">{formatMoney(transaction.amount)}</Td>
+                    <Td className="whitespace-nowrap font-semibold text-slate-600 dark:text-slate-300">{formatMoney(transaction.balance_after ?? transaction.computed_balance_after)}</Td>
+                    <Td className="whitespace-nowrap font-medium text-slate-800 dark:text-slate-200">{transaction.performed_by_name ?? '-'}</Td>
+                    <Td className="min-w-[12rem] text-slate-600 dark:text-slate-400">{transaction.notes || '-'}</Td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <Modal
         open={!!action}
         onClose={() => {
           if (!submitting) resetAction();
         }}
-        title={action === 'topup' ? messages.company.wallets.topupModalTitle : messages.company.wallets.withdrawModalTitle}
+        title={
+          action === 'topup'
+            ? messages.company.wallets.topupModalTitle
+            : messages.company.wallets.withdrawModalTitle
+        }
       >
         <div className="grid gap-4">
+          <Field label="المصدر">
+            <Select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+              {SOURCE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label={messages.company.wallets.amountLabel}>
             <Input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </Field>
@@ -315,7 +373,10 @@ export function CompanyWalletsPage() {
             <Button variant="secondary" onClick={resetAction} disabled={submitting}>
               {messages.common.close}
             </Button>
-            <Button onClick={submitAction} disabled={submitting}>
+            <Button
+              onClick={submitAction}
+              disabled={submitting}
+            >
               {submitting ? messages.common.loading : messages.company.wallets.confirmAction}
             </Button>
           </div>

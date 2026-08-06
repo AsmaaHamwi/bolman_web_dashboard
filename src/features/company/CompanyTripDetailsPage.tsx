@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { Field, Input, Select } from '../../components/ui/Input';
+import { DateTimePicker } from '../../components/ui/DateTimePicker';
 import { Modal } from '../../components/ui/Modal';
 import { StatusBadge } from '../../components/ui/Status';
 import { DataTable, Td } from '../../components/ui/Table';
@@ -19,6 +20,7 @@ import {
   getTripManifest,
   getTripSeatSummary,
   getTripStops,
+  updateTrip,
   updateTripOfferSettings,
   updateTripWithStops,
 } from '../../services/trip.service';
@@ -44,6 +46,8 @@ export function CompanyTripDetailsPage() {
   const companyId = (tripQuery.data?.company_id as string | undefined) ?? company.data ?? undefined;
   const { data: cities = [] } = useCities();
   const [openEdit, setOpenEdit] = useState(false);
+  const [openStatusModal, setOpenStatusModal] = useState(false);
+  const [statusValue, setStatusValue] = useState<string>('scheduled');
   const [form, setForm] = useState<any | null>(null);
   const [stopsForm, setStopsForm] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +64,14 @@ export function CompanyTripDetailsPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!form) throw new Error('Trip form is not ready.');
+
+      if (typeof form.price === 'number' && form.price < 0) {
+        throw new Error('السعر لا يمكن أن يكون سالباً');
+      }
+
+      if (form.offer_is && form.price_offer !== null && Number(form.price_offer) < 0) {
+        throw new Error('سعر العرض لا يمكن أن يكون سالباً');
+      }
 
       if (hasBookings) {
         return updateTripOfferSettings(tripId, {
@@ -119,6 +131,30 @@ export function CompanyTripDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ['trips'] }),
         queryClient.invalidateQueries({ queryKey: ['bookings'] }),
       ]);
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async () => {
+      if (!statusValue) return;
+      if (statusValue === 'completed') {
+        return completeTrip(tripId);
+      }
+      return updateTrip(tripId, { status: statusValue });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['trip', tripId] }),
+        queryClient.invalidateQueries({ queryKey: ['trip-stops', tripId] }),
+        queryClient.invalidateQueries({ queryKey: ['trip-manifest', tripId] }),
+        queryClient.invalidateQueries({ queryKey: ['trips'] }),
+        queryClient.invalidateQueries({ queryKey: ['bookings'] }),
+      ]);
+      setOpenStatusModal(false);
+      setError(null);
+    },
+    onError: (mutationError) => {
+      setError(mutationError instanceof Error ? mutationError.message : messages.common.unexpectedError);
     },
   });
 
@@ -199,6 +235,15 @@ export function CompanyTripDetailsPage() {
               {messages.company.trips.bookOnThisTrip}
             </Button>
             <Button variant="secondary" onClick={openEditModal}>{messages.company.trips.editTrip}</Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setStatusValue(trip.status || 'scheduled');
+                setOpenStatusModal(true);
+              }}
+            >
+              تعديل حالة الرحلة
+            </Button>
             <Button
               variant="mint"
               onClick={() => completeMutation.mutate()}
@@ -360,63 +405,92 @@ export function CompanyTripDetailsPage() {
                     </Select>
                   </Field>
                   <Field label={messages.company.trips.departureTime}>
-                    <Input type="datetime-local" value={form.departure_datetime} onChange={(e) => setForm({ ...form, departure_datetime: e.target.value })} />
+                    <DateTimePicker value={form.departure_datetime} onChange={(val) => setForm({ ...form, departure_datetime: val })} />
                   </Field>
                   <Field label={messages.company.trips.expectedArrival}>
-                    <Input type="datetime-local" value={form.expected_arrival_datetime} onChange={(e) => setForm({ ...form, expected_arrival_datetime: e.target.value })} />
+                    <DateTimePicker value={form.expected_arrival_datetime} onChange={(val) => setForm({ ...form, expected_arrival_datetime: val })} />
                   </Field>
                   <Field label={messages.common.price}>
-                    <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} />
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.price}
+                      onChange={(e) => setForm({ ...form, price: Math.max(0, Number(e.target.value) || 0) })}
+                    />
                   </Field>
                 </div>
 
                 <div className="space-y-3">
                   <div className="text-sm font-bold text-slate-900 dark:text-white">{messages.company.trips.tripStops}</div>
                   {stopsForm.map((stop, index) => (
-                    <div key={`stop-${index}`} className="grid gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-bolman-surfaceDark md:grid-cols-5">
-                      <Select value={stop.stop_type} onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, stop_type: e.target.value } : item))}>
-                        <option value="city">{messages.tripStopType.city}</option>
-                        <option value="rest_stop">{messages.tripStopType.restStop}</option>
-                      </Select>
-                      {stop.stop_type === 'city' ? (
-                        <Select
-                          value={stop.city_id || ''}
-                          onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, city_id: e.target.value, rest_stop_id: null } : item))}
-                        >
-                          <option value="">{messages.company.trips.chooseCity}</option>
-                          {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
-                        </Select>
-                      ) : (
-                        <Select
-                          value={stop.rest_stop_id || ''}
-                          onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, rest_stop_id: e.target.value, city_id: null } : item))}
-                        >
-                          <option value="">{messages.company.trips.chooseRestStop}</option>
-                          {restStops.map((rest: any) => <option key={rest.id} value={rest.id}>{rest.name}</option>)}
-                        </Select>
-                      )}
-                      <Input type="datetime-local" value={stop.time_arrival || ''} onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_arrival: e.target.value } : item))} />
-                      <Input type="datetime-local" value={stop.time_departure || ''} onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_departure: e.target.value } : item))} />
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={!!stop.is_boarding_allowed}
-                            onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, is_boarding_allowed: e.target.checked } : item))}
-                          />
-                          {messages.company.trips.boardingAllowed}
-                        </label>
-                        <label className="flex items-center gap-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={!!stop.is_dropoff_allowed}
-                            onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, is_dropoff_allowed: e.target.checked } : item))}
-                          />
-                          {messages.company.trips.dropoffAllowed}
-                        </label>
-                        <Button variant="secondary" onClick={() => setStopsForm(stopsForm.filter((_, itemIndex) => itemIndex !== index))}>
-                          {messages.common.remove}
-                        </Button>
+                    <div key={`stop-${index}`} className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 pb-3 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-bolman-purple/10 text-xs font-bold text-bolman-purple">
+                            {index + 1}
+                          </span>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                            محطة #{index + 1}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={!!stop.is_boarding_allowed}
+                              onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, is_boarding_allowed: e.target.checked } : item))}
+                            />
+                            {messages.company.trips.boardingAllowed}
+                          </label>
+                          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={!!stop.is_dropoff_allowed}
+                              onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, is_dropoff_allowed: e.target.checked } : item))}
+                            />
+                            {messages.company.trips.dropoffAllowed}
+                          </label>
+                          <Button variant="secondary" onClick={() => setStopsForm(stopsForm.filter((_, itemIndex) => itemIndex !== index))}>
+                            {messages.common.remove}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <Field label="نوع المحطة">
+                          <Select value={stop.stop_type} onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, stop_type: e.target.value } : item))}>
+                            <option value="city">{messages.tripStopType.city}</option>
+                            <option value="rest_stop">{messages.tripStopType.restStop}</option>
+                          </Select>
+                        </Field>
+
+                        <Field label="المحطة">
+                          {stop.stop_type === 'city' ? (
+                            <Select
+                              value={stop.city_id || ''}
+                              onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, city_id: e.target.value, rest_stop_id: null } : item))}
+                            >
+                              <option value="">{messages.company.trips.chooseCity}</option>
+                              {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
+                            </Select>
+                          ) : (
+                            <Select
+                              value={stop.rest_stop_id || ''}
+                              onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, rest_stop_id: e.target.value, city_id: null } : item))}
+                            >
+                              <option value="">{messages.company.trips.chooseRestStop}</option>
+                              {restStops.map((rest: any) => <option key={rest.id} value={rest.id}>{rest.name}</option>)}
+                            </Select>
+                          )}
+                        </Field>
+
+                        <Field label="وقت الوصول">
+                          <DateTimePicker value={stop.time_arrival || ''} onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_arrival: val } : item))} />
+                        </Field>
+
+                        <Field label="وقت المغادرة">
+                          <DateTimePicker value={stop.time_departure || ''} onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_departure: val } : item))} />
+                        </Field>
                       </div>
                     </div>
                   ))}
@@ -438,7 +512,15 @@ export function CompanyTripDetailsPage() {
                     <Input value={form.title_offer} onChange={(e) => setForm({ ...form, title_offer: e.target.value })} />
                   </Field>
                   <Field label={messages.company.trips.offerPrice}>
-                    <Input type="number" value={form.price_offer ?? ''} onChange={(e) => setForm({ ...form, price_offer: Number(e.target.value) })} />
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.price_offer ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setForm({ ...form, price_offer: raw === '' ? null : Math.max(0, Number(raw) || 0) });
+                      }}
+                    />
                   </Field>
                 </div>
               ) : null}
@@ -454,6 +536,27 @@ export function CompanyTripDetailsPage() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal open={openStatusModal} onClose={() => !updateStatusMutation.isPending && setOpenStatusModal(false)} title="تعديل حالة الرحلة">
+        <div className="grid gap-4">
+          <Field label={messages.common.status}>
+            <Select value={statusValue} onChange={(e) => setStatusValue(e.target.value)}>
+              <option value="scheduled">{messages.status.scheduled}</option>
+              <option value="active">{messages.status.active}</option>
+              <option value="completed">{messages.status.completed}</option>
+              <option value="cancelled">{messages.status.cancelled}</option>
+            </Select>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setOpenStatusModal(false)} disabled={updateStatusMutation.isPending}>
+              {messages.common.close}
+            </Button>
+            <Button type="button" onClick={() => updateStatusMutation.mutate()} disabled={updateStatusMutation.isPending}>
+              {updateStatusMutation.isPending ? messages.common.loading : messages.common.save}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

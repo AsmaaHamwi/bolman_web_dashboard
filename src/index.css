@@ -21,57 +21,47 @@ body {
 }
 
 .card-gradient {
-  background: radial-gradient(circle at top left, rgba(184, 176, 255, 0.18), transparent 28%),
+  background: radial-gradient(circle at top left, rgba(139, 233, 193, 0.18), transparent 28%),
               linear-gradient(135deg, rgba(108, 99, 255, 0.12), rgba(255,255,255,0.7));
 }
 
 .dark .card-gradient {
-  background: radial-gradient(circle at top left, rgba(184, 176, 255, 0.12), transparent 30%),
+  background: radial-gradient(circle at top left, rgba(139, 233, 193, 0.12), transparent 30%),
               linear-gradient(135deg, rgba(108, 99, 255, 0.16), rgba(27,29,39,0.94));
 }
 
-.bolman-fade-up {
-  animation: bolman-fade-up 0.7s ease-out both;
-}
-
-.bolman-float {
-  animation: bolman-float 3.2s ease-in-out infinite;
-}
-
-.bolman-float-delayed {
-  animation: bolman-float 3.2s ease-in-out 0.8s infinite;
-}
-
-.bolman-marquee {
-  animation: bolman-marquee 28s linear infinite;
-}
-
-.bolman-stagger > .bolman-stagger-item {
-  opacity: 0;
-  animation: bolman-fade-up 0.55s ease-out forwards;
-}
-
-.bolman-stagger > .bolman-stagger-item:nth-child(1) { animation-delay: 0.04s; }
-.bolman-stagger > .bolman-stagger-item:nth-child(2) { animation-delay: 0.1s; }
-.bolman-stagger > .bolman-stagger-item:nth-child(3) { animation-delay: 0.16s; }
-.bolman-stagger > .bolman-stagger-item:nth-child(4) { animation-delay: 0.22s; }
-.bolman-stagger > .bolman-stagger-item:nth-child(5) { animation-delay: 0.28s; }
-.bolman-stagger > .bolman-stagger-item:nth-child(6) { animation-delay: 0.34s; }
-
-.bolman-list-switch {
-  animation: bolman-fade-up 0.34s ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bolman-fade-up,
-  .bolman-float,
-  .bolman-float-delayed,
-  .bolman-marquee,
-  .bolman-stagger > .bolman-stagger-item,
-  .bolman-list-switch,
-  .animate-bolman-modal-in {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
+@media print {
+  aside,
+  header,
+  .no-print,
+  button,
+  .no-print-bg {
+    display: none !important;
   }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .card-gradient,
+  .dark .card-gradient {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+}
+
+.print-only {
+  display: none;
 }

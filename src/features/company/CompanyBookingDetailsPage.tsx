@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
+import { QrCode } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { Field, Input, Select } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { StatusBadge } from '../../components/ui/Status';
-import { StarRating } from '../../components/ui/StarRating';
 import { DataTable, Td } from '../../components/ui/Table';
 import { SeatMap } from '../../components/booking/SeatMap';
-import { TicketQrModal } from '../../components/booking/TicketQrModal';
 import { useI18n } from '../../hooks/useI18n';
 import { useSeatStatus } from '../../hooks/useSeats';
 import { cancelBookingWithRefund, getBookingDetails, modifyBookingBeforeCutoff } from '../../services/booking.service';
@@ -29,7 +29,7 @@ export function CompanyBookingDetailsPage() {
   const stopsQuery = useQuery({ queryKey: ['booking-trip-stops', tripId], queryFn: () => getTripStops(tripId!), enabled: !!tripId });
   const [openCancel, setOpenCancel] = useState(false);
   const [openModify, setOpenModify] = useState(false);
-  const [qrTicketId, setQrTicketId] = useState<string | null>(null);
+  const [openQr, setOpenQr] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -113,17 +113,20 @@ export function CompanyBookingDetailsPage() {
 
   const booking = bookingQuery.data;
   const currentSeats = booking?.booking_seats?.map((seat: any) => seat.seat?.seat_number).filter(Boolean).join(', ') || '-';
-  const shareCopy = {
-    heading: messages.company.bookings.shareHeading,
-    route: messages.company.bookings.shareRoute,
-    departure: messages.company.bookings.shareDeparture,
-    bus: messages.company.bookings.shareBus,
-    seats: messages.company.bookings.shareSeats,
-    passenger: messages.company.bookings.sharePassenger,
-    ticketCode: messages.company.bookings.shareTicketCode,
-    scanHint: messages.company.bookings.shareScanHint,
-    routeArrow: '→',
-  };
+
+  const qrTokens = useMemo<string[]>(() => {
+    if (!booking) return [];
+    const tickets = booking.tickets ?? [];
+    const mode = booking.ticket_mode;
+    if (mode === 'group') {
+      const t = tickets.find((x: any) => x.ticket_type === 'group' && (x.qr_token || x.ticket_code));
+      const token = t?.qr_token || t?.ticket_code;
+      return token ? [String(token)] : [];
+    }
+    return tickets
+      .map((x: any) => String(x.qr_token || x.ticket_code || ''))
+      .filter(Boolean);
+  }, [booking]);
 
   function openModifyModal() {
     if (!booking) return;
@@ -165,6 +168,10 @@ export function CompanyBookingDetailsPage() {
         subtitle={`${booking.trip?.origin?.name || '-'} - ${booking.trip?.destination?.name || '-'}`}
         actions={
           <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => setOpenQr(true)}>
+              <QrCode size={17} className="me-1.5" />
+              عرض الـ QR
+            </Button>
             <Button variant="secondary" onClick={openModifyModal}>{bd.modifyBooking}</Button>
             <Button variant="danger" onClick={() => { setError(null); setOpenCancel(true); }}>{bd.cancelBooking}</Button>
           </div>
@@ -193,23 +200,6 @@ export function CompanyBookingDetailsPage() {
               <span>{bd.modeLabel}</span>
               <span>{booking.ticket_mode === 'group' ? messages.ticketMode.qrGroup : messages.ticketMode.qrIndividual}</span>
             </div>
-            {booking.booking_status === 'completed' ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span>{bd.ratingLabel}</span>
-                  <StarRating
-                    value={booking.rating_value != null ? Number(booking.rating_value) : null}
-                    emptyLabel={messages.common.noRating}
-                  />
-                </div>
-                {booking.rating_created_at ? (
-                  <div className="flex items-center justify-between">
-                    <span>{bd.ratedAtLabel}</span>
-                    <span>{formatDateTime(booking.rating_created_at)}</span>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
           </div>
         </Card>
         <Card>
@@ -271,7 +261,7 @@ export function CompanyBookingDetailsPage() {
         <CardTitle>{bd.ticketsSection}</CardTitle>
         <div className="mt-4">
           <DataTable
-            columns={[bd.tableCode, bd.tableType, bd.tableTicketStatus, bd.tableActions]}
+            columns={[bd.tableCode, bd.tableType, bd.tableTicketStatus]}
             loading={false}
             empty={!booking.tickets?.length}
           >
@@ -280,16 +270,6 @@ export function CompanyBookingDetailsPage() {
                 <Td className="font-mono text-xs">{ticket.ticket_code}</Td>
                 <Td>{ticket.ticket_type === 'group' ? messages.ticketMode.qrGroup : messages.ticketMode.qrIndividual}</Td>
                 <Td><StatusBadge value={ticket.status} /></Td>
-                <Td>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={!ticket.qr_token}
-                    onClick={() => setQrTicketId(ticket.id)}
-                  >
-                    {bd.actionViewQr}
-                  </Button>
-                </Td>
               </tr>
             ))}
           </DataTable>
@@ -375,21 +355,29 @@ export function CompanyBookingDetailsPage() {
         </div>
       </Modal>
 
-      <TicketQrModal
-        open={!!qrTicketId}
-        onClose={() => setQrTicketId(null)}
-        booking={booking}
-        onlyTicketId={qrTicketId ?? undefined}
-        title={messages.company.bookings.qrModalTitle}
-        emptyLabel={messages.company.bookings.noQrTokens}
-        shareLabel={messages.company.bookings.shareTicket}
-        shareFailedLabel={messages.company.bookings.shareFailed}
-        shareDownloadedLabel={messages.company.bookings.shareDownloaded}
-        groupTicketLabel={messages.ticketMode.qrGroup}
-        individualTicketLabel={messages.ticketMode.qrIndividual}
-        closeLabel={messages.common.close}
-        shareCopy={shareCopy}
-      />
+      <Modal open={openQr} onClose={() => setOpenQr(false)} title={messages.company.bookings.qrModalTitle}>
+        <div className="grid gap-4">
+          {!qrTokens.length ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">{messages.company.bookings.noQrTokens}</p>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-6 p-2">
+              {qrTokens.map((token: string, index: number) => (
+                <div key={`${token}-${index}`} className="flex flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
+                  <QRCodeSVG value={token} size={180} level="M" />
+                  <span className="max-w-[220px] truncate font-mono text-xs font-bold text-slate-700 dark:text-slate-200" title={token}>
+                    {token}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button variant="secondary" type="button" onClick={() => setOpenQr(false)}>
+              {messages.common.close}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

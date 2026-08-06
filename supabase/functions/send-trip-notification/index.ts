@@ -30,13 +30,137 @@ serve(async (req: Request) => {
     const rows = Array.from(userIds).map(user_id => ({ user_id, title, message, type }));
     if (rows.length) await admin.from('notifications').insert(rows);
 
-    // Production push: use Firebase Admin SDK / HTTP v1 server credential here.
-    // The DB notification is created now; FCM dispatch can be added in this function safely.
-    return new Response(JSON.stringify({ recipients: rows.length }), { headers: { ...corsHeaders, 'content-type': 'application/json' } });
+    const pushResult = rows.length ? await sendFirebasePushNotifications(admin, Array.from(userIds), { trip_id, title, message, type }) : { sent: 0, failed: 0 };
+
+    return new Response(JSON.stringify({ recipients: rows.length, push: pushResult }), { headers: { ...corsHeaders, 'content-type': 'application/json' } });
   } catch (error: unknown) {
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unexpected error' }), { status: 400, headers: { ...corsHeaders, 'content-type': 'application/json' } });
   }
 });
+
+type ServiceAccount = {
+  project_id: string;
+  client_email: string;
+  private_key: string;
+};
+
+async function sendFirebasePushNotifications(admin: any, userIds: string[], payload: { trip_id: string; title: string; message: string; type: string }) {
+  const serviceAccount = getFirebaseServiceAccount();
+  const accessToken = await createFirebaseAccessToken(serviceAccount);
+  const projectId = serviceAccount.project_id;
+
+  const { data: tokens, error } = await admin.from('user_fcm_tokens').select('user_id, token').eq('is_active', true).in('user_id', userIds);
+  if (error) throw error;
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const entry of tokens ?? []) {
+    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        message: {
+          token: entry.token,
+          notification: {
+            title: payload.title,
+            body: payload.message,
+          },
+          data: {
+            trip_id: payload.trip_id,
+            type: payload.type,
+          },
+        },
+      }),
+    });
+
+    if (response.ok) {
+      sent += 1;
+      continue;
+    }
+
+    failed += 1;
+    const body = await response.text();
+    if (response.status === 400 || response.status === 404) {
+      await admin.from('user_fcm_tokens').update({ is_active: false }).eq('token', entry.token);
+    }
+    console.error('FCM send failed', response.status, body);
+  }
+
+  return { sent, failed };
+}
+
+function getFirebaseServiceAccount(): ServiceAccount {
+  const raw = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON');
+  if (!raw) throw new Error('Missing FIREBASE_SERVICE_ACCOUNT_JSON');
+  const parsed = JSON.parse(raw) as Partial<ServiceAccount>;
+  if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
+    throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON');
+  }
+  return {
+    project_id: parsed.project_id,
+    client_email: parsed.client_email,
+    private_key: parsed.private_key,
+  };
+}
+
+async function createFirebaseAccessToken(serviceAccount: ServiceAccount) {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: serviceAccount.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const unsignedToken = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(serviceAccount.private_key),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsignedToken));
+  const assertion = `${unsignedToken}.${base64UrlEncode(signature)}`;
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to authenticate with Firebase (${response.status})`);
+  }
+
+  const data = await response.json();
+  if (!data.access_token) throw new Error('Firebase access token missing');
+  return data.access_token as string;
+}
+
+function pemToArrayBuffer(pem: string) {
+  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+  const binary = atob(body);
+  const buffer = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
+  return buffer.buffer;
+}
+
+function base64UrlEncode(value: string | ArrayBuffer | Uint8Array) {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value instanceof Uint8Array ? value : new Uint8Array(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
 
 async function assertCanNotify(admin: any, callerId: string, companyId: string) {
   const { data: caller } = await admin.from('users').select('role,status').eq('id', callerId).single();
