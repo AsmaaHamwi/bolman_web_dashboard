@@ -51,10 +51,13 @@ export const ar = {
       'دالة إلغاء الحجز غير مضافة في قاعدة البيانات. شغّل professional fix patch أولًا.',
     rpcModifyBookingMissing:
       'دالة تعديل الحجز غير مضافة في قاعدة البيانات. شغّل professional fix patch أولًا.',
+    notApplicable: 'غير متاح',
+    noRating: 'بدون تقييم',
   },
   auth: {
     heroTitle: 'بولمان لإدارة النقل بين المحافظات',
     heroSubtitle: 'نظام متكامل واحترافي لإدارة شركات النقل، الرحلات اليومية، الحجوزات، المقاعد، المحفظة الإلكترونية، وتأكيد التذاكر عبر الـ QR.',
+    heroPhrase3: 'تطبيق موحد للشركات والسائقين والركاب',
     authChip: 'دخول آمن وحماية متقدمة',
     uiChip: 'جاهزة للعربية والإنكليزية',
     loginTitle: 'تسجيل الدخول',
@@ -366,6 +369,11 @@ export const ar = {
       basePriceLabel: 'السعر الأساسي',
       offerLabel: 'العرض',
       bookingsCountLabel: 'الحجوزات',
+      passengersCountLabel: 'المسافرون المحجزون',
+      passengersCountHint: 'عدد الركاب في الحجوزات المؤكدة على هذه الرحلة.',
+      reservedSeatsLabel: 'مقاعد محجوزة (مسار كامل)',
+      reservedSeatsHint: 'يظهر فقط عند اختلافه عن عدد الركاب.',
+      availableSeatsLabel: 'المقاعد المتاحة',
       assignmentsCard: 'التعيينات',
       busLabel: 'الباص',
       driverLabel: 'السائق',
@@ -377,6 +385,7 @@ export const ar = {
       dropoffShort: 'نزول',
       arrivalDepartureLine: 'الوصول | المغادرة',
       completeTrip: 'إنهاء الرحلة',
+      bookOnThisTrip: 'حجز على هذه الرحلة',
       manifestColumns: ['الراكب', 'الهاتف', 'الرقم الوطني', 'المقعد', 'حالة التذكرة', 'وقت الصعود'],
     },
     bookings: {
