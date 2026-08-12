@@ -53,20 +53,10 @@ function tripSearchHaystack(trip: any) {
 }
 
 export function sortTripsForList(trips: any[]) {
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-
   return [...trips].sort((left, right) => {
-    const leftDate = new Date(left.departure_datetime);
-    const rightDate = new Date(right.departure_datetime);
-    const leftRank =
-      leftDate.getMonth() === currentMonth && leftDate.getFullYear() === currentYear ? 0 : 1;
-    const rightRank =
-      rightDate.getMonth() === currentMonth && rightDate.getFullYear() === currentYear ? 0 : 1;
-
-    if (leftRank !== rightRank) return leftRank - rightRank;
-    return leftDate.getTime() - rightDate.getTime();
+    const leftDate = new Date(left.departure_datetime).getTime();
+    const rightDate = new Date(right.departure_datetime).getTime();
+    return rightDate - leftDate; // Newest first
   });
 }
 
@@ -84,11 +74,45 @@ export async function searchTrips(input: {
   return (data ?? []) as TripSearchRow[];
 }
 
-export async function listTrips(companyId?: string | null, filters?: TripsListFilters) {
+export const TRIPS_PAGE_SIZE = 20;
+
+export type TripsListResult = {
+  rows: any[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type ListTripsOptions = {
+  page?: number;
+  pageSize?: number;
+  filters?: TripsListFilters;
+};
+
+export async function listTrips(
+  companyId?: string | null,
+  optionsOrFilters?: TripsListFilters | ListTripsOptions,
+): Promise<any> {
+  let filters: TripsListFilters | undefined;
+  let page: number | undefined;
+  let pageSize: number = TRIPS_PAGE_SIZE;
+
+  if (optionsOrFilters) {
+    if ('page' in optionsOrFilters || 'pageSize' in optionsOrFilters || 'filters' in optionsOrFilters) {
+      const opts = optionsOrFilters as ListTripsOptions;
+      filters = opts.filters;
+      page = opts.page;
+      if (opts.pageSize) pageSize = opts.pageSize;
+    } else {
+      filters = optionsOrFilters as TripsListFilters;
+    }
+  }
+
   let q = supabase
     .from('trips')
     .select('*, company:companies(name), bus:buses(number_bus), driver:drivers(user:users(full_name)), origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name)')
-    .order('departure_datetime', { ascending: true });
+    .order('departure_datetime', { ascending: false });
 
   if (companyId) q = q.eq('company_id', companyId);
 
@@ -119,7 +143,25 @@ export async function listTrips(companyId?: string | null, filters?: TripsListFi
     rows = rows.filter((trip) => tripSearchHaystack(trip).includes(search));
   }
 
-  return sortTripsForList(rows);
+  const sortedRows = sortTripsForList(rows);
+
+  if (page !== undefined) {
+    const currentPage = Math.max(1, page);
+    const total = sortedRows.length;
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+    const offset = (currentPage - 1) * pageSize;
+    const pagedRows = sortedRows.slice(offset, offset + pageSize);
+
+    return {
+      rows: pagedRows,
+      page: currentPage,
+      pageSize,
+      total,
+      totalPages,
+    } as TripsListResult;
+  }
+
+  return sortedRows;
 }
 
 export async function getTripStops(tripId: string) {

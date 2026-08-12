@@ -4,11 +4,16 @@ import { createTripWithStops, getTripStops, listTrips, searchTrips, updateTrip, 
 
 export function useTrips(
   companyId?: string | null,
-  options?: { enabled?: boolean; filters?: TripsListFilters; live?: boolean },
+  options?: { enabled?: boolean; filters?: TripsListFilters; live?: boolean; page?: number; pageSize?: number },
 ) {
   return useQuery({
-    queryKey: ['trips', companyId, options?.filters],
-    queryFn: () => listTrips(companyId, options?.filters),
+    queryKey: ['trips', companyId, options?.page, options?.pageSize, options?.filters],
+    queryFn: () =>
+      listTrips(companyId, {
+        page: options?.page,
+        pageSize: options?.pageSize,
+        filters: options?.filters,
+      }),
     enabled: options?.enabled,
     placeholderData: (previous) => previous,
     ...(options?.live ? liveDashboardQueryOptions : {}),

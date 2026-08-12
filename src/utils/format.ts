@@ -52,6 +52,25 @@ export function getLocalDateInputValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function formatTripDuration(departure?: string | null, arrival?: string | null) {
+  if (!departure || !arrival) return '';
+  const dep = new Date(departure).getTime();
+  const arr = new Date(arrival).getTime();
+  if (isNaN(dep) || isNaN(arr) || arr <= dep) return '';
+  const diffMinutes = Math.round((arr - dep) / (1000 * 60));
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  const isAr = getCurrentLocale() === 'ar';
+  if (hours > 0 && minutes > 0) {
+    return isAr ? `${hours} س ${minutes} د` : `${hours}h ${minutes}m`;
+  }
+  if (hours > 0) {
+    return isAr ? `${hours} س` : `${hours}h`;
+  }
+  return isAr ? `${minutes} د` : `${minutes}m`;
+}
+
 export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
+
