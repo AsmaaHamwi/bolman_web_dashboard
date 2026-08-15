@@ -13,30 +13,158 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const admin = createClient(supabaseUrl, serviceRoleKey);
+
     const token = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     const { data: authData, error: authError } = await admin.auth.getUser(token);
     if (authError || !authData.user) throw new Error('Unauthorized');
     const callerId = authData.user.id;
-    const { trip_id, title, message, type = 'trip_notice' } = await req.json();
 
-    const { data: trip, error: tripError } = await admin.from('trips').select('id, company_id').eq('id', trip_id).single();
-    if (tripError || !trip) throw new Error('Trip not found');
-    await assertCanNotify(admin, callerId, trip.company_id);
+    const body = await req.json();
+    const { mode = 'trip_all', title, message, type = 'trip_notice' } = body;
 
-    const { data: bookings, error } = await admin.from('bookings').select('booker_user_id, booking_passengers(user_id)').eq('trip_id', trip_id).in('booking_status', ['confirmed','boarded','completed']);
-    if (error) throw error;
-    const userIds = new Set<string>();
-    bookings?.forEach((b: any) => { if (b.booker_user_id) userIds.add(b.booker_user_id); b.booking_passengers?.forEach((p: any) => p.user_id && userIds.add(p.user_id)); });
-    const rows = Array.from(userIds).map(user_id => ({ user_id, title, message, type }));
-    if (rows.length) await admin.from('notifications').insert(rows);
+    // ─── Validate caller can send notifications ───
+    await assertCanNotify(admin, callerId, mode, body);
 
-    const pushResult = rows.length ? await sendFirebasePushNotifications(admin, Array.from(userIds), { trip_id, title, message, type }) : { sent: 0, failed: 0 };
+    let userIds: string[] = [];
 
-    return new Response(JSON.stringify({ recipients: rows.length, push: pushResult }), { headers: { ...corsHeaders, 'content-type': 'application/json' } });
+    // ─── Resolve target user IDs based on mode ───
+    if (mode === 'all') {
+      // General broadcast: all users with role=passenger that are active
+      const { data: users, error } = await admin
+        .from('users')
+        .select('id')
+        .eq('role', 'passenger')
+        .eq('status', 'active');
+      if (error) throw error;
+      userIds = (users ?? []).map((u: any) => u.id);
+
+    } else if (mode === 'trip_all') {
+      // All passengers of a specific trip
+      const { trip_id } = body;
+      if (!trip_id) throw new Error('trip_id is required for mode=trip_all');
+      userIds = await getTripUserIds(admin, trip_id);
+
+    } else if (mode === 'trip_selected') {
+      // Specific passengers from a trip (must be ≥1)
+      const { trip_id, user_ids } = body;
+      if (!trip_id) throw new Error('trip_id is required for mode=trip_selected');
+      if (!Array.isArray(user_ids) || user_ids.length === 0) {
+        throw new Error('user_ids must be a non-empty array for mode=trip_selected');
+      }
+      // Validate all provided user_ids actually belong to the trip
+      const tripUserIds = await getTripUserIds(admin, trip_id);
+      const tripUserSet = new Set(tripUserIds);
+      userIds = user_ids.filter((id: string) => tripUserSet.has(id));
+      if (userIds.length === 0) throw new Error('None of the provided user_ids are passengers of this trip');
+
+    } else if (mode === 'user') {
+      // Single user
+      const { user_id } = body;
+      if (!user_id) throw new Error('user_id is required for mode=user');
+      userIds = [user_id];
+
+    } else {
+      throw new Error(`Unknown mode: ${mode}`);
+    }
+
+    // ─── Insert notifications ───
+    const rows = userIds.map((user_id) => ({ user_id, title, message, type }));
+    if (rows.length > 0) {
+      const { error: insertError } = await admin.from('notifications').insert(rows);
+      if (insertError) throw insertError;
+    }
+
+    // ─── Push notifications ───
+    const tripIdForPush = body.trip_id ?? null;
+    const pushResult = rows.length
+      ? await sendFirebasePushNotifications(admin, userIds, { trip_id: tripIdForPush, title, message, type })
+      : { sent: 0, failed: 0 };
+
+    return new Response(
+      JSON.stringify({ recipients: rows.length, push: pushResult }),
+      { headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    );
   } catch (error: unknown) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unexpected error' }), { status: 400, headers: { ...corsHeaders, 'content-type': 'application/json' } });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unexpected error' }),
+      { status: 400, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    );
   }
 });
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+/** Collect all user_ids from confirmed/boarded/completed bookings for a trip */
+async function getTripUserIds(admin: any, tripId: string): Promise<string[]> {
+  const { data: bookings, error } = await admin
+    .from('bookings')
+    .select('booker_user_id, booking_passengers(user_id)')
+    .eq('trip_id', tripId)
+    .in('booking_status', ['confirmed', 'partially_boarded', 'boarded', 'completed']);
+  if (error) throw error;
+
+  const userIds = new Set<string>();
+  for (const b of bookings ?? []) {
+    if (b.booker_user_id) userIds.add(b.booker_user_id);
+    for (const p of b.booking_passengers ?? []) {
+      if (p.user_id) userIds.add(p.user_id);
+    }
+  }
+  return Array.from(userIds);
+}
+
+async function assertCanNotify(admin: any, callerId: string, mode: string, body: any) {
+  const { data: caller } = await admin.from('users').select('role,status').eq('id', callerId).single();
+  if (!caller || caller.status !== 'active') throw new Error('Inactive caller');
+
+  // super_admin can do everything
+  if (caller.role === 'super_admin') return;
+
+  // system_staff can send general and user-level notifications, but not company-specific trip ones
+  if (caller.role === 'system_staff') {
+    if (mode === 'all' || mode === 'user') return;
+    throw new Error('Forbidden: system_staff cannot send trip notifications');
+  }
+
+  // company roles can only send trip-related notifications for their own company
+  if (caller.role === 'company_owner' || caller.role === 'company_staff') {
+    const tripId = body.trip_id;
+    if (!tripId) throw new Error('Forbidden: trip_id required for company roles');
+
+    const { data: trip } = await admin.from('trips').select('id, company_id').eq('id', tripId).single();
+    if (!trip) throw new Error('Trip not found');
+
+    if (caller.role === 'company_owner') {
+      const { data } = await admin
+        .from('companies')
+        .select('id')
+        .eq('id', trip.company_id)
+        .eq('owner_user_id', callerId)
+        .maybeSingle();
+      if (data) return;
+    }
+
+    if (caller.role === 'company_staff') {
+      const { data } = await admin
+        .from('company_staff_permissions')
+        .select('can_send_notifications')
+        .eq('company_id', trip.company_id)
+        .eq('user_id', callerId)
+        .maybeSingle();
+      if (data?.can_send_notifications) return;
+    }
+
+    throw new Error('Forbidden: cannot send notifications for this company');
+  }
+
+  throw new Error('Forbidden: role not allowed to send notifications');
+}
+
+// ─────────────────────────────────────────────
+// Firebase FCM
+// ─────────────────────────────────────────────
 
 type ServiceAccount = {
   project_id: string;
@@ -44,18 +172,29 @@ type ServiceAccount = {
   private_key: string;
 };
 
-async function sendFirebasePushNotifications(admin: any, userIds: string[], payload: { trip_id: string; title: string; message: string; type: string }) {
+async function sendFirebasePushNotifications(
+  admin: any,
+  userIds: string[],
+  payload: { trip_id: string | null; title: string; message: string; type: string },
+) {
   const serviceAccount = getFirebaseServiceAccount();
   const accessToken = await createFirebaseAccessToken(serviceAccount);
   const projectId = serviceAccount.project_id;
 
-  const { data: tokens, error } = await admin.from('user_fcm_tokens').select('user_id, token').eq('is_active', true).in('user_id', userIds);
+  const { data: tokens, error } = await admin
+    .from('user_fcm_tokens')
+    .select('user_id, token')
+    .eq('is_active', true)
+    .in('user_id', userIds);
   if (error) throw error;
 
   let sent = 0;
   let failed = 0;
 
   for (const entry of tokens ?? []) {
+    const fcmData: Record<string, string> = { type: payload.type };
+    if (payload.trip_id) fcmData.trip_id = payload.trip_id;
+
     const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
       method: 'POST',
       headers: {
@@ -65,14 +204,8 @@ async function sendFirebasePushNotifications(admin: any, userIds: string[], payl
       body: JSON.stringify({
         message: {
           token: entry.token,
-          notification: {
-            title: payload.title,
-            body: payload.message,
-          },
-          data: {
-            trip_id: payload.trip_id,
-            type: payload.type,
-          },
+          notification: { title: payload.title, body: payload.message },
+          data: fcmData,
         },
       }),
     });
@@ -100,11 +233,7 @@ function getFirebaseServiceAccount(): ServiceAccount {
   if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
     throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON');
   }
-  return {
-    project_id: parsed.project_id,
-    client_email: parsed.client_email,
-    private_key: parsed.private_key,
-  };
+  return { project_id: parsed.project_id, client_email: parsed.client_email, private_key: parsed.private_key };
 }
 
 async function createFirebaseAccessToken(serviceAccount: ServiceAccount) {
@@ -138,17 +267,17 @@ async function createFirebaseAccessToken(serviceAccount: ServiceAccount) {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to authenticate with Firebase (${response.status})`);
-  }
-
+  if (!response.ok) throw new Error(`Failed to authenticate with Firebase (${response.status})`);
   const data = await response.json();
   if (!data.access_token) throw new Error('Firebase access token missing');
   return data.access_token as string;
 }
 
 function pemToArrayBuffer(pem: string) {
-  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+  const body = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '');
   const binary = atob(body);
   const buffer = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
@@ -156,23 +285,13 @@ function pemToArrayBuffer(pem: string) {
 }
 
 function base64UrlEncode(value: string | ArrayBuffer | Uint8Array) {
-  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value instanceof Uint8Array ? value : new Uint8Array(value);
+  const bytes =
+    typeof value === 'string'
+      ? new TextEncoder().encode(value)
+      : value instanceof Uint8Array
+      ? value
+      : new Uint8Array(value);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-async function assertCanNotify(admin: any, callerId: string, companyId: string) {
-  const { data: caller } = await admin.from('users').select('role,status').eq('id', callerId).single();
-  if (!caller || caller.status !== 'active') throw new Error('Inactive caller');
-  if (caller.role === 'super_admin') return;
-  if (caller.role === 'company_owner') {
-    const { data } = await admin.from('companies').select('id').eq('id', companyId).eq('owner_user_id', callerId).maybeSingle();
-    if (data) return;
-  }
-  if (caller.role === 'company_staff') {
-    const { data } = await admin.from('company_staff_permissions').select('can_send_notifications').eq('company_id', companyId).eq('user_id', callerId).maybeSingle();
-    if (data?.can_send_notifications) return;
-  }
-  throw new Error('Forbidden: cannot send notifications for this company');
 }

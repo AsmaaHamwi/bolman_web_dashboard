@@ -15,12 +15,14 @@ export function SeatMap({
   onToggle,
   readonly = false,
   layoutType = '2_2',
+  loading = false,
 }: {
   seats: any[];
   selected?: string[];
   onToggle?: (id: string) => void;
   readonly?: boolean;
   layoutType?: '2_2' | '2_1';
+  loading?: boolean;
 }) {
   const { messages } = useI18n();
 
@@ -39,10 +41,10 @@ export function SeatMap({
   }
 
   return (
-    <div className="mx-auto w-fit min-w-[300px] sm:min-w-[380px] rounded-[2.5rem] border-4 border-slate-300/80 bg-slate-100 p-4 sm:p-6 shadow-xl dark:border-slate-700/80 dark:bg-bolman-surfaceDark">
+    <div className="mx-auto w-full max-w-[460px] rounded-[2.5rem] border-4 border-slate-300/80 bg-slate-100/90 p-4 sm:p-5 shadow-xl dark:border-slate-700/80 dark:bg-bolman-surfaceDark">
       {/* Front Windshield & Driver Area */}
-      <div className="mb-6 flex items-center justify-between rounded-t-3xl border-b-2 border-dashed border-slate-300/80 pb-4 dark:border-slate-700/80">
-        <div className="flex items-center gap-2 rounded-2xl bg-slate-200/90 px-4 py-2 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200 shadow-inner">
+      <div className="mb-5 flex items-center justify-between rounded-t-3xl border-b-2 border-dashed border-slate-300/80 pb-3 dark:border-slate-700/80">
+        <div className="flex items-center gap-2 rounded-2xl bg-slate-200/90 px-3.5 py-1.5 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200 shadow-inner">
           <span className="text-base">🚘</span>
           <span>{messages.seatMap.driver}</span>
         </div>
@@ -52,59 +54,86 @@ export function SeatMap({
         </div>
       </div>
 
-      {/* Seat Rows Grid */}
-      <div className="space-y-4 px-1">
-        {rows.map((row, rIdx) => (
-          <div key={rIdx} className="flex items-center justify-center gap-2 sm:gap-3">
-            {/* Row Number */}
-            <span className="w-5 text-center text-xs font-bold text-slate-400 dark:text-slate-500 shrink-0 me-1">
-              {rIdx + 1}
-            </span>
-
-            {/* Left Pair */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              {row.left.map((seat) => (
-                <SeatButton
-                  key={seat.bus_seat_id || seat.id || seat.seat_number}
-                  seat={seat}
-                  selected={selected}
-                  readonly={readonly}
-                  onToggle={onToggle}
-                />
-              ))}
-            </div>
-
-            {/* Central Aisle */}
-            <div className="w-8 sm:w-12 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-black tracking-widest text-slate-400/60 dark:text-slate-600 uppercase select-none">
-                {rIdx === 0 ? messages.seatMap.aisle : '•'}
+      {/* Seat Rows Grid / Loading Skeletons */}
+      {loading ? (
+        <div className="space-y-3.5 px-1 animate-pulse">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((rowNum) => (
+            <div key={rowNum} className="flex items-center justify-center gap-2 sm:gap-2.5">
+              <span className="w-4 text-center text-xs font-bold text-slate-300 shrink-0">
+                {rowNum}
               </span>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-200 dark:bg-slate-700" />
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-200 dark:bg-slate-700" />
+              </div>
+              <div className="w-6 sm:w-8 flex items-center justify-center shrink-0">
+                <span className="text-[10px] text-slate-300">•</span>
+              </div>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-200 dark:bg-slate-700" />
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-200 dark:bg-slate-700" />
+              </div>
             </div>
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <p className="font-bold">جاري تحميل خريطة المقاعد...</p>
+        </div>
+      ) : (
+        <div className="space-y-3 px-0.5">
+          {rows.map((row, rIdx) => (
+            <div key={rIdx} className="flex items-center justify-center gap-1.5 sm:gap-2.5">
+              {/* Row Number */}
+              <span className="w-4 text-center text-xs font-bold text-slate-400 dark:text-slate-500 shrink-0">
+                {rIdx + 1}
+              </span>
 
-            {/* Right Pair */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              {row.right.map((seat) => (
-                <SeatButton
-                  key={seat.bus_seat_id || seat.id || seat.seat_number}
-                  seat={seat}
-                  selected={selected}
-                  readonly={readonly}
-                  onToggle={onToggle}
-                />
-              ))}
+              {/* Left Pair */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {row.left.map((seat) => (
+                  <SeatButton
+                    key={seat.bus_seat_id || seat.id || seat.seat_number}
+                    seat={seat}
+                    selected={selected}
+                    readonly={readonly}
+                    onToggle={onToggle}
+                  />
+                ))}
+              </div>
+
+              {/* Central Aisle */}
+              <div className="w-5 sm:w-7 flex items-center justify-center shrink-0">
+                <span className="text-[10px] font-black tracking-widest text-slate-400/60 dark:text-slate-600 uppercase select-none">
+                  {rIdx === 0 ? messages.seatMap.aisle : '•'}
+                </span>
+              </div>
+
+              {/* Right Pair */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {row.right.map((seat) => (
+                  <SeatButton
+                    key={seat.bus_seat_id || seat.id || seat.seat_number}
+                    seat={seat}
+                    selected={selected}
+                    readonly={readonly}
+                    onToggle={onToggle}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Rear Wall / Back of the Bus */}
-      <div className="mt-7 flex items-center justify-center gap-2 rounded-b-3xl border-t-2 border-dashed border-slate-300/80 pt-4 text-xs font-black text-slate-500 dark:border-slate-700/80 dark:text-slate-400">
+      <div className="mt-6 flex items-center justify-center gap-2 rounded-b-3xl border-t-2 border-dashed border-slate-300/80 pt-3 text-xs font-black text-slate-500 dark:border-slate-700/80 dark:text-slate-400">
         <span className="text-base">🚍</span>
         <span>{messages.seatMap.rear}</span>
       </div>
 
       {/* Status Legend */}
-      <div className="mt-5 flex flex-wrap justify-center gap-3 border-t border-slate-200/80 pt-4 text-xs dark:border-slate-700/60">
+      <div className="mt-4 flex flex-wrap justify-center gap-2.5 border-t border-slate-200/80 pt-3 text-xs dark:border-slate-700/60">
         <Legend color="bg-emerald-100 dark:bg-emerald-500/20 border-emerald-400" label={messages.status.available} />
         <Legend color="bg-bolman-purple" label={messages.seatMap.selected} />
         <Legend color="bg-red-100 dark:bg-red-500/20 border-red-400" label={messages.status.reserved} />
@@ -136,7 +165,7 @@ function SeatButton({
       {/* Curved Headrest */}
       <div
         className={cx(
-          'h-2.5 w-8 sm:w-9 rounded-t-md transition-colors',
+          'h-2 w-7 sm:w-8 rounded-t-md transition-colors',
           isSelected ? 'bg-bolman-purple' : headrestClass(status),
         )}
       />
@@ -147,7 +176,7 @@ function SeatButton({
         disabled={isDisabled}
         onClick={() => onToggle?.(seatId)}
         className={cx(
-          'relative flex h-12 w-12 sm:h-14 sm:w-14 flex-col items-center justify-center rounded-2xl border text-xs sm:text-sm font-black transition-all shadow-sm',
+          'relative flex h-11 w-11 sm:h-12 sm:w-12 flex-col items-center justify-center rounded-2xl border text-xs font-black transition-all shadow-sm',
           isSelected
             ? 'bg-bolman-purple text-white border-bolman-purple shadow-glow ring-2 ring-bolman-purple/50 scale-105'
             : statusClass(status),
@@ -155,9 +184,9 @@ function SeatButton({
         )}
       >
         {/* Left Armrest */}
-        <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-l-md bg-current opacity-25" />
+        <span className="absolute -left-0.5 top-2 bottom-2 w-0.5 rounded-l-md bg-current opacity-25" />
         {/* Right Armrest */}
-        <span className="absolute -right-1 top-2.5 bottom-2.5 w-1 rounded-r-md bg-current opacity-25" />
+        <span className="absolute -right-0.5 top-2 bottom-2 w-0.5 rounded-r-md bg-current opacity-25" />
 
         <span>#{seat.seat_number}</span>
       </button>

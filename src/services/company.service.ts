@@ -30,3 +30,8 @@ export async function getMyCompanyId(userId: string, role: string) {
   }
   return null;
 }
+
+export async function getCompanyById(id: string) {
+  const { data, error } = await supabase.from('companies').select('*').eq('id', id).maybeSingle();
+  throwIfError(error); return data;
+}

@@ -102,6 +102,7 @@ export async function listBookings(
   let listQuery = supabase
     .from('bookings')
     .select(`${BOOKING_LIST_SELECT}, ${tripEmbed}`, { count: 'exact' })
+    .order('departure_datetime', { referencedTable: 'trips', ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .range(offset, offset + pageSize - 1);

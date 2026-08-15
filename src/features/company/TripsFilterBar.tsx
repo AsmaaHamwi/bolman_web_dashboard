@@ -2,6 +2,7 @@ import { Search } from 'lucide-react';
 
 import { CityPicker } from '../../components/ui/CityPicker';
 import { Input, Select } from '../../components/ui/Input';
+import { DateInput } from '../../components/ui/DateInput';
 import { CompactFilterControl, FilterPanel, compactFilterInputClass } from '../../components/ui/FilterPanel';
 
 import { useI18n } from '../../hooks/useI18n';
@@ -264,17 +265,16 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
 
 
-      <CompactFilterControl label={copy.departureDateFrom} className="min-w-[10rem] max-w-[11rem]">
 
-        <Input
+      <CompactFilterControl label={copy.departureDateFrom} className="min-w-[13rem] max-w-[15rem]">
 
-          type="date"
+        <DateInput
 
           className={compactFilterInputClass}
 
           value={filters.departureDateFrom ?? ''}
 
-          onChange={(event) => update('departureDateFrom', event.target.value)}
+          onChange={(val) => update('departureDateFrom', val)}
 
         />
 
@@ -282,11 +282,9 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
 
 
-      <CompactFilterControl label={copy.departureDateTo} className="min-w-[10rem] max-w-[11rem]">
+      <CompactFilterControl label={copy.departureDateTo} className="min-w-[13rem] max-w-[15rem]">
 
-        <Input
-
-          type="date"
+        <DateInput
 
           className={compactFilterInputClass}
 
@@ -294,11 +292,12 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
           min={filters.departureDateFrom || undefined}
 
-          onChange={(event) => update('departureDateTo', event.target.value)}
+          onChange={(val) => update('departureDateTo', val)}
 
         />
 
       </CompactFilterControl>
+
 
     </FilterPanel>
 

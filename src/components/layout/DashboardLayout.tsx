@@ -13,6 +13,7 @@ import {
 import { cx } from '../../utils/format';
 import { useI18n } from '../../hooks/useI18n';
 import { translateRole } from '../../i18n';
+import { useCompanyContext, useCompanyProfile } from '../../hooks/useCompanyContext';
 
 const City = MapPin;
 
@@ -23,6 +24,9 @@ export function DashboardLayout() {
   const { theme, toggleTheme, sidebarCollapsed, toggleSidebar } = useUiStore();
   const { locale, messages, toggleLocale } = useI18n();
   const navigate = useNavigate();
+  const companyContext = useCompanyContext();
+  const companyProfile = useCompanyProfile(companyContext.data);
+
 
   async function logout() {
     await signOut();
@@ -107,11 +111,15 @@ export function DashboardLayout() {
               </Button>
               <div>
                 <h1 className="text-lg font-black">
-                  {messages.layout.welcome} {profile?.full_name || ''}
+                  {profile?.role === 'company_owner'
+                    ? messages.layout.welcomeOwner.replace('{companyName}', companyProfile.data?.name || '')
+                    : `${messages.layout.welcome} ${profile?.full_name || ''}`}
                 </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {profile?.role ? translateRole(profile.role, locale) : ''}
-                </p>
+                {profile?.role !== 'company_owner' && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {profile?.role ? translateRole(profile.role, locale) : ''}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">

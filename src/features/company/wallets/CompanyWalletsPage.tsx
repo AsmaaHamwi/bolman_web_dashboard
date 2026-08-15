@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, WalletCards } from 'lucide-react';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { Badge } from '../../../components/ui/Badge';
@@ -8,6 +8,8 @@ import { Card, CardTitle } from '../../../components/ui/Card';
 import { Field, Input, Select, Textarea } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { DataTable, Td } from '../../../components/ui/Table';
+import { Pagination } from '../../../components/ui/Pagination';
+import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { useCompanyStaffPermissions } from '../../../hooks/usePermissions';
 import { useI18n } from '../../../hooks/useI18n';
@@ -40,6 +42,7 @@ export function CompanyWalletsPage() {
   const queryClient = useQueryClient();
   const companyPermissions = useCompanyStaffPermissions();
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedPassenger, setSelectedPassenger] = useState<WalletPassengerSearchResult | null>(null);
   const [action, setAction] = useState<WalletAction | null>(null);
   const [sourceType, setSourceType] = useState<string>('office');
@@ -51,20 +54,21 @@ export function CompanyWalletsPage() {
     profile?.role === 'company_owner' ||
     !!companyPermissions.data?.can_manage_wallets ||
     !!companyPermissions.data?.can_manage_bookings;
-  const passengersQuery = useInfiniteQuery({
-    queryKey: ['wallet', 'passengers', search.trim()],
-    initialPageParam: 0,
-    queryFn: ({ pageParam }) =>
-      searchPassengersForWallet(search, { limit: walletPassengerPageSize, offset: pageParam }),
-    getNextPageParam: (lastPage, allPages) =>
-      !lastPage || lastPage.length < walletPassengerPageSize ? undefined : allPages.length * walletPassengerPageSize,
+
+  const passengersQuery = useQuery({
+    queryKey: ['wallet', 'passengers', search.trim(), page],
+    queryFn: () =>
+      searchPassengersForWallet(search, {
+        limit: walletPassengerPageSize,
+        offset: (page - 1) * walletPassengerPageSize,
+      }),
     enabled: canManageWallets,
   });
 
-  const passengers = useMemo(
-    () => (passengersQuery.data?.pages ?? []).flat() as WalletPassengerSearchResult[],
-    [passengersQuery.data],
-  );
+  const passengers = (passengersQuery.data ?? []) as WalletPassengerSearchResult[];
+
+  const hasMore = passengers.length === walletPassengerPageSize;
+  const totalPages = hasMore ? page + 1 : page;
 
   const summaryQuery = useQuery({
     queryKey: ['wallet', 'summary', selectedPassenger?.user_id],
@@ -192,92 +196,95 @@ export function CompanyWalletsPage() {
         </div>
       ) : null}
 
-      <Card>
-        <CardTitle>{messages.company.wallets.searchTitle}</CardTitle>
-        <div className="mt-4 space-y-4">
-          <Field label={messages.company.wallets.searchLabel}>
-            <div className="relative">
-              <Search className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <Input
-                className="ps-11"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setFeedback(null);
-                }}
-                placeholder={messages.company.wallets.searchPlaceholder}
-              />
-            </div>
-          </Field>
+      {!selectedPassenger ? (
+        <Card>
+          <CardTitle>{messages.company.wallets.searchTitle}</CardTitle>
+          <div className="mt-4 space-y-4">
+            <Field label={messages.company.wallets.searchLabel}>
+              <div className="relative">
+                <Search className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <Input
+                  className="ps-11"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(1);
+                    setFeedback(null);
+                  }}
+                  placeholder={messages.company.wallets.searchPlaceholder}
+                />
+              </div>
+            </Field>
 
-          <p className="text-sm text-slate-500 dark:text-slate-400">{messages.company.wallets.directoryHint}</p>
-          {passengersQuery.isError ? (
-            <p className="text-sm text-red-600 dark:text-red-300">{(passengersQuery.error as Error).message}</p>
-          ) : null}
+            <p className="text-sm text-slate-500 dark:text-slate-400">{messages.company.wallets.directoryHint}</p>
+            {passengersQuery.isError ? (
+              <p className="text-sm text-red-600 dark:text-red-300">{(passengersQuery.error as Error).message}</p>
+            ) : null}
 
-          <DataTable
-            columns={messages.company.wallets.passengerTable as unknown as string[]}
-            loading={passengersQuery.isPending && !passengersQuery.data}
-            empty={!passengersQuery.isPending && passengers.length === 0}
-          >
-            {passengers.map((passenger) => (
-              <tr
-                key={passenger.user_id}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setSelectedPassenger(passenger);
-                  setFeedback(null);
-                  resetAction();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
+            <DataTable
+              columns={messages.company.wallets.passengerTable as unknown as string[]}
+              loading={passengersQuery.isPending}
+              empty={!passengersQuery.isPending && passengers.length === 0}
+            >
+              {passengers.map((passenger) => (
+                <tr
+                  key={passenger.user_id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
                     setSelectedPassenger(passenger);
                     setFeedback(null);
                     resetAction();
-                  }
-                }}
-                className={cx(
-                  'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-bolman-surfaceDark/80',
-                  selectedPassenger?.user_id === passenger.user_id
-                    ? 'bg-bolman-purple/10 dark:bg-bolman-purple/20'
-                    : '',
-                )}
-              >
-                <Td className="whitespace-nowrap font-bold text-slate-900 dark:text-white">
-                  {passenger.full_name}
-                </Td>
-                <Td className="whitespace-nowrap font-mono">{passenger.phone || '-'}</Td>
-                <Td className="whitespace-nowrap font-mono text-slate-500">
-                  <span title={passenger.email ?? undefined}>{passenger.email || '-'}</span>
-                </Td>
-                <Td className="whitespace-nowrap font-bold text-bolman-purple">{formatMoney(passenger.balance)}</Td>
-              </tr>
-            ))}
-          </DataTable>
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedPassenger(passenger);
+                      setFeedback(null);
+                      resetAction();
+                    }
+                  }}
+                  className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-bolman-surfaceDark/80"
+                >
+                  <Td className="whitespace-nowrap font-bold text-slate-900 dark:text-white">
+                    {passenger.full_name}
+                  </Td>
+                  <Td className="whitespace-nowrap font-mono">{passenger.phone || '-'}</Td>
+                  <Td className="whitespace-nowrap font-mono text-slate-500">
+                    <span title={passenger.email ?? undefined}>{passenger.email || '-'}</span>
+                  </Td>
+                  <Td className="whitespace-nowrap font-bold text-bolman-purple">{formatMoney(passenger.balance)}</Td>
+                </tr>
+              ))}
+            </DataTable>
 
-          {passengersQuery.hasNextPage ? (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => passengersQuery.fetchNextPage()}
-                disabled={passengersQuery.isFetchingNextPage}
-              >
-                {passengersQuery.isFetchingNextPage ? messages.common.loading : messages.company.wallets.loadMore}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </Card>
-
-      {!selectedPassenger ? (
-        <div className="grid min-h-36 place-items-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-500 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark/40 dark:text-slate-400">
-          {messages.company.wallets.selectPassengerHint}
-        </div>
+            {totalPages > 1 ? (
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                disabled={passengersQuery.isPending}
+              />
+            ) : null}
+          </div>
+        </Card>
       ) : (
         <div className="space-y-6">
+          <div className="flex justify-start">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => {
+                setSelectedPassenger(null);
+                setFeedback(null);
+              }}
+              className="flex items-center gap-2"
+            >
+              <span className="font-black">←</span>
+              <span>العودة لدليل المحافظ</span>
+            </Button>
+          </div>
+
           <Card className="border-bolman-purple/15 bg-gradient-to-r from-bolman-purple/10 via-white to-bolman-mint/15 dark:from-bolman-purple/20 dark:via-bolman-cardDark dark:to-bolman-mint/20 shadow-md">
             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">

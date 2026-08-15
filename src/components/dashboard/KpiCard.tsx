@@ -1,9 +1,13 @@
 import { LucideIcon } from 'lucide-react';
 import { Card } from '../ui/Card';
+import { cx } from '../../utils/format';
 
-export function KpiCard({ title, value, icon: Icon, hint }: { title: string; value: string | number; icon: LucideIcon; hint?: string }) {
+export function KpiCard({ title, value, icon: Icon, hint, onClick, className }: { title: string; value: string | number; icon: LucideIcon; hint?: string; onClick?: () => void; className?: string }) {
   return (
-    <Card className="card-gradient overflow-hidden w-full">
+    <Card 
+      className={cx("card-gradient overflow-hidden w-full", onClick && "cursor-pointer hover:shadow-lg transition-shadow", className)}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between gap-3 min-w-0">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400 truncate">{title}</p>

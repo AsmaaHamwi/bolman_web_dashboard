@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import type { TripSearchRow } from '../types/domain';
 import { getSeatsStatus } from './seat.service';
 import { throwIfError } from './errors';
+import { getLocalDateInputValue } from '../utils/format';
 
 export type TripManifestRow = {
   booking_id: string;
@@ -72,6 +73,50 @@ export async function searchTrips(input: {
   });
   throwIfError(error);
   return (data ?? []) as TripSearchRow[];
+}
+
+export async function findNextAvailableTripDate(input: {
+  origin_city_id: string;
+  destination_city_id: string;
+  startDate?: string;
+  daysAhead?: number;
+  companyId?: string | null;
+}): Promise<{ date: string; trips: TripSearchRow[] } | null> {
+  const base = input.startDate ? new Date(`${input.startDate}T12:00:00`) : new Date();
+  const days = input.daysAhead ?? 10;
+
+  const datePromises: Promise<{ date: string; trips: TripSearchRow[] }>[] = [];
+  for (let i = 1; i <= days; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    const dateStr = getLocalDateInputValue(d);
+    datePromises.push(
+      searchTrips({
+        origin_city_id: input.origin_city_id,
+        destination_city_id: input.destination_city_id,
+        travel_date: dateStr,
+      })
+        .then((rows) => {
+          let list = rows;
+          if (input.companyId) {
+            list = list.filter((t) => t.company_id === input.companyId);
+          }
+          return { date: dateStr, trips: list };
+        })
+        .catch(() => ({ date: dateStr, trips: [] as TripSearchRow[] })),
+    );
+  }
+
+  const results = await Promise.all(datePromises);
+  results.sort((a, b) => a.date.localeCompare(b.date));
+
+  for (const res of results) {
+    if (res.trips.length > 0) {
+      return res;
+    }
+  }
+
+  return null;
 }
 
 export const TRIPS_PAGE_SIZE = 20;

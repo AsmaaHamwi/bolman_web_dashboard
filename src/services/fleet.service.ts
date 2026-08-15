@@ -59,6 +59,19 @@ export async function hasActiveTripForDriver(driverId: string) {
   return (data?.length ?? 0) > 0;
 }
 
+export async function getActiveTripForDriver(driverId: string): Promise<{ id: string; expected_arrival_datetime?: string | null } | null> {
+  const { data, error } = await supabase
+    .from('trips')
+    .select('id, expected_arrival_datetime')
+    .eq('driver_id', driverId)
+    .eq('status', 'active')
+    .limit(1)
+    .single();
+  if (error?.code === 'PGRST116') return null; // no rows
+  throwIfError(error);
+  return data ?? null;
+}
+
 export async function updateBusRecord(id: string, patch: { status?: string; current_city_id?: string | null }) {
   const { data, error } = await supabase.from('buses').update(patch).eq('id', id).select().single();
   throwIfError(error);
@@ -90,4 +103,12 @@ export async function listRestStops(companyId: string) {
 export async function createRestStop(input: { company_id: string; name: string; address?: string; phone?: string }) {
   const { data, error } = await supabase.from('rest_stops').insert(input).select().single();
   throwIfError(error); return data;
+}
+
+export async function deleteBus(busId: string) {
+  const { error } = await supabase.from('buses').delete().eq('id', busId);
+  if (error?.code === '23503') {
+    throw new Error('لا يمكن حذف الباص لأنه مرتبط برحلات أو بيانات أخرى.');
+  }
+  throwIfError(error);
 }

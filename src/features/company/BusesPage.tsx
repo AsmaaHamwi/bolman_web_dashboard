@@ -1,7 +1,7 @@
 import { SeatMap } from '../../components/booking/SeatMap';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bus, MapPin, Plus, ShieldCheck } from 'lucide-react';
+import { Bus, MapPin, Plus, ShieldCheck, Trash } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { DataTable, Td } from '../../components/ui/Table';
@@ -10,7 +10,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Field, Input, Select } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
-import { useBuses, useCreateBus } from '../../hooks/useFleet';
+import { useBuses, useCreateBus, useDeleteBus } from '../../hooks/useFleet';
 import { useCities } from '../../hooks/useCities';
 import { hasActiveTripForBus, listBusSeats, updateBusRecord } from '../../services/fleet.service';
 
@@ -23,16 +23,44 @@ export function BusesPage() {
   const { data = [], isPending } = useBuses(companyId, { enabled: !!companyId });
   const { data: cities = [] } = useCities();
   const create = useCreateBus();
+  const deleteBus = useDeleteBus();
   const { messages } = useI18n();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ number_bus: '', seat_layout_type: '2_2' as const, total_seats: 45, current_city_id: '' });
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [busSearch, setBusSearch] = useState('');
+  const [form, setForm] = useState<{ number_bus: string; seat_layout_type: '2_2' | '2_1'; total_seats: number; current_city_id: string }>({ number_bus: '', seat_layout_type: '2_2', total_seats: 45, current_city_id: '' });
   const [seatsBus, setSeatsBus] = useState<any | null>(null);
   const [statusBus, setStatusBus] = useState<any | null>(null);
   const [cityBus, setCityBus] = useState<any | null>(null);
   const [statusValue, setStatusValue] = useState<string>('available');
   const [cityValue, setCityValue] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const loading = company.isPending || isPending;
+
+  const handleCreateBus = () => {
+    if (!form.number_bus.trim()) {
+      setFormError('يرجى إدخال رقم أو اسم الباص.');
+      return;
+    }
+    if (!form.current_city_id) {
+      setFormError('يرجى اختيار المدينة الحالية للباص.');
+      return;
+    }
+    
+    setFormError(null);
+    if (companyId) {
+      create.mutate(
+        { ...form, company_id: companyId, current_city_id: form.current_city_id },
+        { 
+          onSuccess: () => {
+             setOpen(false);
+             setForm({ number_bus: '', seat_layout_type: '2_2', total_seats: 45, current_city_id: '' });
+          }
+        }
+      );
+    }
+  };
 
   const seatsQuery = useQuery({
     queryKey: ['bus-seats', seatsBus?.id],
@@ -57,16 +85,51 @@ export function BusesPage() {
     },
   });
 
+  const handleDeleteBus = async () => {
+    const bus = data.find((b: any) => b.number_bus === busSearch);
+    if (!bus) {
+      alert('الرجاء كتابة واختيار باص صحيح من القائمة.');
+      return;
+    }
+    
+    try {
+      const blocked = await hasActiveTripForBus(bus.id);
+      if (blocked) {
+        alert('لا يمكن حذف الباص لأنه مرتبط برحلة نشطة حالياً.');
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    deleteBus.mutate(bus.id, {
+      onSuccess: () => {
+        setDeleteOpen(false);
+        setBusSearch('');
+      },
+      onError: (err) => {
+        alert(err instanceof Error ? err.message : 'حدث خطأ أثناء الحذف.');
+      }
+    });
+  };
+
   return (
     <div>
+
       <PageHeader
         title={messages.company.buses.title}
         subtitle={messages.company.buses.subtitle}
         actions={
-          <Button onClick={() => setOpen(true)}>
-            <Plus size={18} />
-            {messages.company.buses.addButton}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setDeleteOpen(true)} className="bg-red-500 hover:bg-red-600 shadow-glow-red">
+              <Trash size={18} />
+              حذف باص
+            </Button>
+            <Button onClick={() => setOpen(true)}>
+              <Plus size={18} />
+              {messages.company.buses.addButton}
+            </Button>
+          </div>
         }
       />
 
@@ -129,18 +192,38 @@ export function BusesPage() {
             <Input value={form.number_bus} onChange={(e) => setForm({ ...form, number_bus: e.target.value })} />
           </Field>
           <Field label={messages.company.buses.layoutType}>
-            <Select value={form.seat_layout_type} onChange={(e) => setForm({ ...form, seat_layout_type: e.target.value as any })}>
+            <Select 
+              value={form.seat_layout_type} 
+              onChange={(e) => {
+                const layout = e.target.value as '2_2' | '2_1';
+                const defaultSeats = layout === '2_1' ? 30 : 45;
+                setForm({ ...form, seat_layout_type: layout, total_seats: defaultSeats });
+              }}
+            >
               <option value="2_2">2 + 2</option>
-              <option value="2_1">2 + 1</option>
+              <option value="2_1">1 + 2</option>
             </Select>
           </Field>
           <Field label={messages.company.buses.seatCount}>
-            <Input
-              type="number"
-              min={1}
-              value={form.total_seats}
-              onChange={(e) => setForm({ ...form, total_seats: Math.max(1, Number(e.target.value) || 1) })}
-            />
+            <Select
+              value={String(form.total_seats)}
+              onChange={(e) => setForm({ ...form, total_seats: Number(e.target.value) })}
+            >
+              {form.seat_layout_type === '2_1' ? (
+                <>
+                  <option value="27">27</option>
+                  <option value="30">30</option>
+                  <option value="35">35</option>
+                  <option value="37">37</option>
+                </>
+              ) : (
+                <>
+                  <option value="25">25</option>
+                  <option value="40">40</option>
+                  <option value="45">45</option>
+                </>
+              )}
+            </Select>
           </Field>
           <Field label={messages.common.currentCity}>
             <Select value={form.current_city_id} onChange={(e) => setForm({ ...form, current_city_id: e.target.value })}>
@@ -148,15 +231,14 @@ export function BusesPage() {
               {cities.map((city: any) => <option key={city.id} value={city.id}>{city.name}</option>)}
             </Select>
           </Field>
+          {formError && (
+            <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">
+              {formError}
+            </div>
+          )}
           <Button
-            disabled={!companyId}
-            onClick={() =>
-              companyId &&
-              create.mutate(
-                { ...form, company_id: companyId, current_city_id: form.current_city_id || null },
-                { onSuccess: () => setOpen(false) },
-              )
-            }
+            disabled={!companyId || create.isPending}
+            onClick={handleCreateBus}
           >
             {messages.company.buses.saveWithSeats}
           </Button>
@@ -227,6 +309,36 @@ export function BusesPage() {
             </div>
           </div>
         ) : null}
+      </Modal>
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="حذف باص">
+        <div className="grid gap-4">
+          <Field label="اختر الباص المراد حذفه">
+            <Input 
+              list="bus-delete-options" 
+              value={busSearch} 
+              onChange={(e) => setBusSearch(e.target.value)} 
+              placeholder="اكتب رقم أو اسم الباص..."
+            />
+            <datalist id="bus-delete-options">
+              {data.map((bus: any) => (
+                <option key={bus.id} value={bus.number_bus} />
+              ))}
+            </datalist>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setDeleteOpen(false)} disabled={deleteBus.isPending}>
+              {messages.common.close}
+            </Button>
+            <Button
+              type="button"
+              className="bg-red-500 hover:bg-red-600 shadow-glow-red"
+              disabled={!busSearch || deleteBus.isPending}
+              onClick={handleDeleteBus}
+            >
+              حذف
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

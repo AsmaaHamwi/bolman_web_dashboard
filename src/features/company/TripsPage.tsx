@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Loader2, Plus } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -32,11 +32,18 @@ function hasActiveFilters(filters: TripsListFilters) {
 
 export function TripsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const company = useCompanyContext();
   const companyId = company.data;
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<TripsListFilters>(EMPTY_TRIPS_FILTERS);
-  const [queryFilters, setQueryFilters] = useState<TripsListFilters>(EMPTY_TRIPS_FILTERS);
+  const initialFilters = useMemo(() => {
+    if (location.state?.filterStatus) {
+      return { ...EMPTY_TRIPS_FILTERS, status: location.state.filterStatus };
+    }
+    return EMPTY_TRIPS_FILTERS;
+  }, [location.state]);
+  const [filters, setFilters] = useState<TripsListFilters>(initialFilters);
+  const [queryFilters, setQueryFilters] = useState<TripsListFilters>(initialFilters);
   const { data: cities = [] } = useCities();
   const { data, isPending, isFetching, isError, error } = useTrips(companyId, {
     enabled: !!companyId,

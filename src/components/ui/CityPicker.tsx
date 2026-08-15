@@ -61,7 +61,7 @@ export function CityPicker({
         className={cx(
           'flex w-full items-center gap-2 text-start outline-none transition focus:border-bolman-purple focus:ring-4 focus:ring-bolman-purple/10',
           route
-            ? 'rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-2.5 hover:border-bolman-purple/30 dark:border-bolman-borderDark dark:bg-white/5 dark:hover:border-bolman-purple/40'
+            ? 'rounded-2xl border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-xs hover:border-bolman-purple/50 hover:shadow-sm dark:border-bolman-borderDark dark:bg-bolman-cardDark dark:hover:border-bolman-purple/50'
             : 'rounded-2xl border border-slate-200 bg-white hover:border-bolman-purple/40 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark',
           !route && (compact ? 'px-3 py-2.5 text-sm' : 'px-4 py-3 text-sm'),
           className,
@@ -69,16 +69,20 @@ export function CityPicker({
       >
         {displayName ? (
           <>
-            <CityThumbnail cityName={displayName} size={route || compact ? 28 : 32} selected />
-            <span className="min-w-0 flex-1 truncate font-bold text-slate-900 dark:text-white">{displayName}</span>
+            <CityThumbnail cityName={displayName} size={route ? 30 : (compact ? 28 : 32)} selected />
+            <span className="min-w-0 flex-1 truncate text-sm font-black text-slate-900 dark:text-white">{displayName}</span>
           </>
         ) : (
           <>
-            {route ? <MapPin size={17} className="shrink-0 text-slate-400" /> : null}
-            <span className="min-w-0 flex-1 truncate text-slate-400">{placeholder ?? messages.common.choose}</span>
+            {route ? (
+              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-400 dark:bg-white/10 dark:text-slate-300">
+                <MapPin size={15} />
+              </div>
+            ) : null}
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-400">{placeholder ?? messages.common.choose}</span>
           </>
         )}
-        <ChevronDown size={18} className="shrink-0 text-slate-400" />
+        <ChevronDown size={17} className="shrink-0 text-slate-400 transition group-hover:text-bolman-purple" />
       </button>
 
       <Modal

@@ -78,6 +78,7 @@ export const ar = {
   },
   layout: {
     welcome: 'مرحبًا',
+    welcomeOwner: 'مرحبًا بك مالك شركة "{companyName}"',
     logout: 'خروج',
     navigation: {
       overview: 'الرئيسية',
@@ -305,6 +306,10 @@ export const ar = {
       editDriver: 'تعديل بيانات السائق',
       editLicense: 'تعديل رقم الرخصة',
       activeTripBlock: 'لا يمكن تعطيل سائق لديه رحلة نشطة.',
+      pendingSuspendTitle: 'ممنوع تعطيل السائق الآن',
+      pendingSuspendMsg: 'السائق {name} لديه رحلة نشطة حالياً. سيتم تعطيله تلقائياً بعد انتهاء الرحلة المتوقعة في: {time}.',
+      pendingSuspendUnknownTime: 'وقت غير محدد',
+      permissionError: 'ليس لديك الصلاحية الكافية لتعديل حالة هذا السائق.',
     },
     trips: {
       title: 'إدارة الرحلات',
@@ -510,8 +515,10 @@ export const ar = {
       bestPrice: 'أفضل سعر',
       totalAmount: 'المجموع الإجمالي',
       ticketPrice: 'سعر التذكرة',
-      selectedSeatsCount: 'المقاعد المختارة',
       tripDuration: 'المدة المقدرة',
+      searchPrompt: 'البحث عن رحلة متاحة',
+      cheapestBadge: 'أفضل سعر',
+      fullyBooked: 'مكتملة الحجز',
     },
 
     wallets: {
@@ -591,11 +598,20 @@ export const ar = {
     },
     notifications: {
       title: 'الإشعارات',
-      subtitle: 'إرسال إشعارات لركاب الرحلة',
+      subtitle: 'إرسال إشعارات مخصصة للمستخدمين',
       cardTitle: 'إشعار رحلة',
       trip: 'الرحلة',
       send: 'إرسال',
       success: 'تم إرسال الإشعار وحفظه للمستخدمين المستهدفين.',
+      modeGeneral: 'إشعار عام',
+      modeTrip: 'رحلة محددة',
+      modeUser: 'مستخدم واحد',
+      audienceAll: 'كل المسافرين',
+      audienceSelected: 'مسافرون محددون',
+      sourceSystem: 'من النظام',
+      sourceTrip: 'من رحلة محددة',
+      searchUser: 'ابحث بالاسم أو رقم الهاتف...',
+      noPassengers: 'لا يوجد مسافرون مسجلون لهذه الرحلة',
     },
   },
 } as const;

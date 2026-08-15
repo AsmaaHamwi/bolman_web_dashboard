@@ -78,6 +78,7 @@ export const en = {
   },
   layout: {
     welcome: 'Welcome',
+    welcomeOwner: 'Welcome, owner of "{companyName}"',
     logout: 'Logout',
     navigation: {
       overview: 'Overview',
@@ -305,6 +306,10 @@ export const en = {
       editDriver: 'Edit driver',
       editLicense: 'Edit license number',
       activeTripBlock: 'Cannot suspend a driver who is assigned to an active trip.',
+      pendingSuspendTitle: 'Cannot suspend driver right now',
+      pendingSuspendMsg: 'Driver {name} is currently on an active trip. They will be suspended automatically after the trip ends at: {time}.',
+      pendingSuspendUnknownTime: 'unknown time',
+      permissionError: 'You do not have sufficient permissions to update this driver\'s status.',
     },
     trips: {
       title: 'Trip Management',
@@ -524,8 +529,10 @@ export const en = {
       bestPrice: 'Best Price',
       totalAmount: 'Total Amount',
       ticketPrice: 'Ticket Price',
-      selectedSeatsCount: 'Selected Seats',
       tripDuration: 'Estimated Duration',
+      searchPrompt: 'Search for available trips',
+      cheapestBadge: 'Best Price',
+      fullyBooked: 'Fully booked',
     },
     wallets: {
       title: 'Wallet Management',
@@ -604,11 +611,20 @@ export const en = {
     },
     notifications: {
       title: 'Notifications',
-      subtitle: 'Send trip notifications to passengers',
+      subtitle: 'Send customized notifications to users',
       cardTitle: 'Trip notification',
       trip: 'Trip',
       send: 'Send',
       success: 'The notification was sent and saved for the targeted users.',
+      modeGeneral: 'General notification',
+      modeTrip: 'Specific trip',
+      modeUser: 'Single user',
+      audienceAll: 'All passengers',
+      audienceSelected: 'Selected passengers',
+      sourceSystem: 'From system',
+      sourceTrip: 'From a specific trip',
+      searchUser: 'Search by name or phone...',
+      noPassengers: 'No registered passengers for this trip',
     },
   },
 } as const;

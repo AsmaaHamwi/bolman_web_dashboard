@@ -21,3 +21,12 @@ export const useRestStops = (companyId?: string | null) => useQuery({ queryKey: 
 export function useCreateBus() { const qc = useQueryClient(); return useMutation({ mutationFn: createBusWithSeats, onSuccess: () => qc.invalidateQueries({ queryKey: ['buses'] }) }); }
 export function useCreateDriver() { const qc = useQueryClient(); return useMutation({ mutationFn: createDriver, onSuccess: () => qc.invalidateQueries({ queryKey: ['drivers'] }) }); }
 export function useCreateRestStop() { const qc = useQueryClient(); return useMutation({ mutationFn: createRestStop, onSuccess: () => qc.invalidateQueries({ queryKey: ['rest-stops'] }) }); }
+
+import { deleteBus } from '../services/fleet.service';
+export function useDeleteBus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteBus,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['buses'] }),
+  });
+}

@@ -28,7 +28,7 @@ export type WalletTransaction = {
   created_at: string;
 };
 
-const WALLET_PASSENGER_PAGE_SIZE = 40;
+const WALLET_PASSENGER_PAGE_SIZE = 20;
 
 function isMissingWalletSearchRpc(error: { message?: string } | null): boolean {
   if (!error?.message) return false;

@@ -92,5 +92,47 @@ async function assertCanManageStatus(admin: any, caller: any, target: any) {
     }
   }
 
-  throw new Error('Forbidden: insufficient permission to update this account');
+  if (target.role === 'driver') {
+    if (caller.role === 'system_staff') {
+      const { data } = await admin
+        .from('system_staff_permissions')
+        .select('can_manage_companies')
+        .eq('user_id', caller.id)
+        .maybeSingle();
+
+      if (data?.can_manage_companies) return;
+    }
+
+    const { data: driverRecord } = await admin
+      .from('drivers')
+      .select('company_id')
+      .eq('user_id', target.id)
+      .maybeSingle();
+
+    if (driverRecord?.company_id) {
+      if (caller.role === 'company_owner') {
+        const { data: company } = await admin
+          .from('companies')
+          .select('id')
+          .eq('id', driverRecord.company_id)
+          .eq('owner_user_id', caller.id)
+          .maybeSingle();
+
+        if (company) return;
+      }
+
+      if (caller.role === 'company_staff') {
+        const { data: staffPermission } = await admin
+          .from('company_staff_permissions')
+          .select('can_manage_drivers')
+          .eq('company_id', driverRecord.company_id)
+          .eq('user_id', caller.id)
+          .maybeSingle();
+
+        if (staffPermission?.can_manage_drivers) return;
+      }
+    }
+  }
+
+  throw new Error('ليس لديك الصلاحية الكافية لتعديل حالة هذا الحساب. (Forbidden: Insufficient permissions)');
 }
