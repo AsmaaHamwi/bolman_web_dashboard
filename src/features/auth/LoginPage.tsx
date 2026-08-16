@@ -15,13 +15,17 @@ import { useI18n } from '../../hooks/useI18n';
 const marqueeCities = ['دمشق', 'حلب', 'حمص', 'حماة', 'اللاذقية', 'طرطوس', 'إدلب', 'الرقة', 'دير الزور', 'السويداء'];
 
 export function LoginPage() {
-  const { session, profile } = useAuth();
+  const { session, profile, loading: authLoading } = useAuth();
   const { theme, toggleTheme } = useUiStore();
   const { locale, messages, toggleLocale } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  if (authLoading) {
+    return <div className="grid min-h-screen place-items-center text-bolman-purple">{messages.common.loading}</div>;
+  }
 
   if (session) return <Navigate to={getDefaultDashboardPath(profile)} replace />;
 

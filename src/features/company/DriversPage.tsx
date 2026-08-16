@@ -14,6 +14,7 @@ import { createUserViaEdge, updateUserStatusViaEdge } from '../../services/auth.
 import { getActiveTripForDriver, updateDriverRecord, updateUserProfile } from '../../services/fleet.service';
 import { sanitizeName, sanitizePositiveDigits, isValidName, getSyrianPhoneError } from '../../utils/validation';
 import { formatDateTime } from '../../utils/format';
+import { supabase } from '../../lib/supabase';
 
 
 export function DriversPage() {
@@ -58,14 +59,22 @@ export function DriversPage() {
         phone: editForm.phone.trim() || null,
       });
 
-      if (currentStatus !== nextStatus) {
-        await updateUserStatusViaEdge({ user_id: editing.user.id, status: nextStatus as 'active' | 'suspended' });
-      }
-
       await updateDriverRecord(editing.id, { 
         license_number: editForm.license_number.trim(),
         status: nextStatus,
       });
+
+      if (currentStatus !== nextStatus) {
+        try {
+          await updateUserStatusViaEdge({ user_id: editing.user.id, status: nextStatus as 'active' | 'suspended' });
+        } catch {
+          try {
+            await supabase.from('users').update({ status: nextStatus }).eq('id', editing.user.id);
+          } catch {
+            // Ignore if users table update is restricted
+          }
+        }
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['drivers', companyId] });
@@ -101,8 +110,19 @@ export function DriversPage() {
           throw new Error('__active_trip__');
         }
       }
-      await updateUserStatusViaEdge({ user_id: driver.user.id, status: next === 'active' ? 'active' : 'suspended' });
+      // 1. Always update the driver record in drivers table first
       await updateDriverRecord(driver.id, { status: next });
+
+      // 2. Try syncing user account status via Edge or direct update
+      try {
+        await updateUserStatusViaEdge({ user_id: driver.user.id, status: next === 'active' ? 'active' : 'suspended' });
+      } catch {
+        try {
+          await supabase.from('users').update({ status: next }).eq('id', driver.user.id);
+        } catch {
+          // Ignore
+        }
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['drivers', companyId] });

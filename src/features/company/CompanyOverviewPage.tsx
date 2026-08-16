@@ -13,7 +13,7 @@ import { formatMoney } from '../../utils/format';
 export function CompanyOverviewPage() {
   const navigate = useNavigate();
   const { data: companyId } = useCompanyContext();
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['company-kpis', companyId],
     queryFn: () => getCompanyKpis(companyId),
     enabled: !!companyId,
@@ -44,11 +44,11 @@ export function CompanyOverviewPage() {
       <PageHeader title={messages.company.overview.title} subtitle={messages.company.overview.subtitle} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <KpiCard title={messages.common.trips} value={data?.trips ?? 0} icon={CalendarDays} onClick={() => navigate('/company/trips')} />
-        <KpiCard title={messages.common.active} value={data?.activeTrips ?? 0} icon={Bus} onClick={() => navigate('/company/trips', { state: { filterStatus: 'active' } })} />
-        <KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} icon={ClipboardList} onClick={() => navigate('/company/bookings')} />
-        <KpiCard title={messages.common.passengers} value={data?.passengers ?? 0} icon={Users} onClick={() => navigate('/company/bookings')} />
-        <KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} icon={WalletCards} onClick={() => navigate('/company/reports')} />
+        <KpiCard title={messages.common.trips} value={data?.trips ?? 0} isLoading={isLoading} icon={CalendarDays} onClick={() => navigate('/company/trips')} />
+        <KpiCard title={messages.common.active} value={data?.activeTrips ?? 0} isLoading={isLoading} icon={Bus} onClick={() => navigate('/company/trips', { state: { filterStatus: 'active' } })} />
+        <KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} isLoading={isLoading} icon={ClipboardList} onClick={() => navigate('/company/bookings')} />
+        <KpiCard title={messages.common.passengers} value={data?.passengers ?? 0} isLoading={isLoading} icon={Users} onClick={() => navigate('/company/bookings')} />
+        <KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} isLoading={isLoading} icon={WalletCards} onClick={() => navigate('/company/reports')} />
       </div>
 
       <Card className="p-6">

@@ -38,10 +38,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
-      if (nextSession?.user.id) loadProfile(nextSession.user.id).catch(console.error);
-      else setProfile(null);
+      if (nextSession?.user.id) {
+        setLoading(true);
+        try {
+          await loadProfile(nextSession.user.id);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);

@@ -38,7 +38,7 @@ import { formatDateTime, formatMoney } from '../../utils/format';
 
 export function CompanyReportsPage() {
   const { data: companyId } = useCompanyContext();
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['company-kpis', companyId],
     queryFn: () => getCompanyKpis(companyId),
     enabled: !!companyId,
@@ -184,10 +184,10 @@ export function CompanyReportsPage() {
 
       {/* KPI Cards Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard title={messages.common.revenue} value={formatMoney(totalRev)} icon={WalletCards} />
-        <KpiCard title={messages.company.reports.occupancyRate} value={periodOccupancy} icon={Users} hint="معدل ممتاز" />
-        <KpiCard title={messages.company.reports.avgTicketPrice} value={formatMoney(Math.round(totalRev / (totalPassengers || 1)))} icon={Wallet} />
-        <KpiCard title={messages.common.bookings} value={totalBookings} icon={FileSpreadsheet} />
+        <KpiCard title={messages.common.revenue} value={formatMoney(totalRev)} isLoading={isLoading} icon={WalletCards} />
+        <KpiCard title={messages.company.reports.occupancyRate} value={periodOccupancy} isLoading={isLoading} icon={Users} hint="معدل ممتاز" />
+        <KpiCard title={messages.company.reports.avgTicketPrice} value={formatMoney(Math.round(totalRev / (totalPassengers || 1)))} isLoading={isLoading} icon={Wallet} />
+        <KpiCard title={messages.common.bookings} value={totalBookings} isLoading={isLoading} icon={FileSpreadsheet} />
       </div>
 
       {/* Charts Grid */}

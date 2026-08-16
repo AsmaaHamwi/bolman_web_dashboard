@@ -181,6 +181,14 @@ export function BusesPage() {
                 >
                   <Bus size={17} />
                 </button>
+                <button
+                  type="button"
+                  title="حذف الباص"
+                  onClick={() => { setBusSearch(bus.number_bus); setDeleteOpen(true); }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-red-500 hover:bg-red-50 hover:text-red-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 transition-all shadow-sm"
+                >
+                  <Trash size={17} />
+                </button>
               </div>
             </Td>
           </tr>

@@ -146,9 +146,14 @@ export function DashboardLayout() {
 }
 
 function SidebarLink({ to, label, icon: Icon, collapsed }: { to: string; label: string; icon: any; collapsed: boolean }) {
+  // Use `end` to ensure exact match for routes like "/company" or "/system", 
+  // so that navigating to "/company/buses" doesn't also highlight "/company".
+  const exactMatch = to === '/company' || to === '/system';
+
   return (
     <NavLink
       to={to}
+      end={exactMatch}
       className={({ isActive }) =>
         cx(
           'flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-bold transition',

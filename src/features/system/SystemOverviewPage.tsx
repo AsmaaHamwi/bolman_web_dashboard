@@ -11,7 +11,7 @@ import { getSystemKpis } from '../../services/report.service';
 import { formatMoney } from '../../utils/format';
 
 export function SystemOverviewPage() {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['system-kpis'],
     queryFn: getSystemKpis,
     ...liveDashboardQueryOptions,
@@ -27,12 +27,12 @@ export function SystemOverviewPage() {
     <div>
       <PageHeader title={messages.dashboard.systemOverview.title} subtitle={messages.dashboard.systemOverview.subtitle} />
       <StaggerChildren className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <StaggerItem><KpiCard title={messages.layout.navigation.companies} value={data?.companies ?? 0} icon={Building2} /></StaggerItem>
-        <StaggerItem><KpiCard title={messages.common.users} value={data?.users ?? 0} icon={Users} /></StaggerItem>
-        <StaggerItem><KpiCard title={messages.common.trips} value={data?.trips ?? 0} icon={Bus} /></StaggerItem>
-        <StaggerItem><KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} icon={ClipboardList} /></StaggerItem>
-        <StaggerItem><KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} icon={WalletCards} /></StaggerItem>
-        <StaggerItem><KpiCard title="QR" value={data?.scans ?? 0} icon={QrCode} /></StaggerItem>
+        <StaggerItem><KpiCard title={messages.layout.navigation.companies} value={data?.companies ?? 0} isLoading={isLoading} icon={Building2} /></StaggerItem>
+        <StaggerItem><KpiCard title={messages.common.users} value={data?.users ?? 0} isLoading={isLoading} icon={Users} /></StaggerItem>
+        <StaggerItem><KpiCard title={messages.common.trips} value={data?.trips ?? 0} isLoading={isLoading} icon={Bus} /></StaggerItem>
+        <StaggerItem><KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} isLoading={isLoading} icon={ClipboardList} /></StaggerItem>
+        <StaggerItem><KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} isLoading={isLoading} icon={WalletCards} /></StaggerItem>
+        <StaggerItem><KpiCard title="QR" value={data?.scans ?? 0} isLoading={isLoading} icon={QrCode} /></StaggerItem>
       </StaggerChildren>
       <Card className="bolman-fade-up mt-6">
         <CardTitle>{messages.dashboard.systemOverview.weeklyActivity}</CardTitle>

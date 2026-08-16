@@ -9,7 +9,7 @@ import { getSystemKpis } from '../../services/report.service';
 import { formatMoney } from '../../utils/format';
 
 export function SystemReportsPage() {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['system-kpis'],
     queryFn: getSystemKpis,
     ...liveDashboardQueryOptions,
@@ -20,10 +20,10 @@ export function SystemReportsPage() {
     <div>
       <PageHeader title={messages.system.reports.title} subtitle={messages.system.reports.subtitle} />
       <div className="grid gap-4 md:grid-cols-4">
-        <KpiCard title={messages.layout.navigation.companies} value={data?.companies ?? 0} icon={Building2} />
-        <KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} icon={ClipboardList} />
-        <KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} icon={WalletCards} />
-        <KpiCard title={messages.system.reports.scans} value={data?.scans ?? 0} icon={QrCode} />
+        <KpiCard title={messages.layout.navigation.companies} value={data?.companies ?? 0} isLoading={isLoading} icon={Building2} />
+        <KpiCard title={messages.common.bookings} value={data?.bookings ?? 0} isLoading={isLoading} icon={ClipboardList} />
+        <KpiCard title={messages.common.revenue} value={formatMoney(data?.revenue)} isLoading={isLoading} icon={WalletCards} />
+        <KpiCard title={messages.system.reports.scans} value={data?.scans ?? 0} isLoading={isLoading} icon={QrCode} />
       </div>
       <Card className="mt-6">
         <CardTitle>{messages.system.reports.noteTitle}</CardTitle>
