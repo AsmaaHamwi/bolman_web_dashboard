@@ -76,9 +76,19 @@ serve(async (req: Request) => {
 
     // ─── Push notifications ───
     const tripIdForPush = body.trip_id ?? null;
-    const pushResult = rows.length
-      ? await sendFirebasePushNotifications(admin, userIds, { trip_id: tripIdForPush, title, message, type })
-      : { sent: 0, failed: 0 };
+    let pushResult = { sent: 0, failed: 0, warning: undefined as string | undefined };
+    if (rows.length > 0) {
+      try {
+        pushResult = await sendFirebasePushNotifications(admin, userIds, { trip_id: tripIdForPush, title, message, type });
+      } catch (fcmErr: any) {
+        console.error('Push notification failed:', fcmErr);
+        pushResult = {
+          sent: 0,
+          failed: userIds.length,
+          warning: `In-app saved, but Push (FCM) failed: ${fcmErr?.message || 'FCM error'}`,
+        };
+      }
+    }
 
     return new Response(
       JSON.stringify({ recipients: rows.length, push: pushResult }),
@@ -128,35 +138,62 @@ async function assertCanNotify(admin: any, callerId: string, mode: string, body:
     throw new Error('Forbidden: system_staff cannot send trip notifications');
   }
 
-  // company roles can only send trip-related notifications for their own company
+  // company roles can only send trip-related notifications for their own company or direct user notifications
   if (caller.role === 'company_owner' || caller.role === 'company_staff') {
     const tripId = body.trip_id;
-    if (!tripId) throw new Error('Forbidden: trip_id required for company roles');
 
-    const { data: trip } = await admin.from('trips').select('id, company_id').eq('id', tripId).single();
-    if (!trip) throw new Error('Trip not found');
+    if (tripId) {
+      const { data: trip } = await admin.from('trips').select('id, company_id').eq('id', tripId).single();
+      if (!trip) throw new Error('Trip not found');
 
-    if (caller.role === 'company_owner') {
-      const { data } = await admin
-        .from('companies')
-        .select('id')
-        .eq('id', trip.company_id)
-        .eq('owner_user_id', callerId)
-        .maybeSingle();
-      if (data) return;
+      if (caller.role === 'company_owner') {
+        const { data } = await admin
+          .from('companies')
+          .select('id')
+          .eq('id', trip.company_id)
+          .eq('owner_user_id', callerId)
+          .maybeSingle();
+        if (data) return;
+      }
+
+      if (caller.role === 'company_staff') {
+        const { data } = await admin
+          .from('company_staff_permissions')
+          .select('can_send_notifications')
+          .eq('company_id', trip.company_id)
+          .eq('user_id', callerId)
+          .maybeSingle();
+        if (data?.can_send_notifications) return;
+      }
+
+      throw new Error('Forbidden: cannot send notifications for this company');
     }
 
-    if (caller.role === 'company_staff') {
-      const { data } = await admin
-        .from('company_staff_permissions')
-        .select('can_send_notifications')
-        .eq('company_id', trip.company_id)
-        .eq('user_id', callerId)
-        .maybeSingle();
-      if (data?.can_send_notifications) return;
+    // Direct notification to a user (no trip_id)
+    if (mode === 'user' && body.user_id) {
+      if (caller.role === 'company_owner') {
+        const { data } = await admin
+          .from('companies')
+          .select('id')
+          .eq('owner_user_id', callerId)
+          .maybeSingle();
+        if (data) return;
+      }
+
+      if (caller.role === 'company_staff') {
+        const { data } = await admin
+          .from('company_staff_permissions')
+          .select('can_send_notifications')
+          .eq('user_id', callerId)
+          .eq('can_send_notifications', true)
+          .maybeSingle();
+        if (data) return;
+      }
+
+      throw new Error('Forbidden: caller does not have notification permission');
     }
 
-    throw new Error('Forbidden: cannot send notifications for this company');
+    throw new Error('Forbidden: trip_id or user_id required for company roles');
   }
 
   throw new Error('Forbidden: role not allowed to send notifications');

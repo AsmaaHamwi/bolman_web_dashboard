@@ -154,9 +154,17 @@ export async function listTrips(
     }
   }
 
+  const isPaged = page !== undefined;
+  const currentPage = Math.max(1, page ?? 1);
+  const offset = (currentPage - 1) * pageSize;
+  const search = filters?.search?.trim();
+
   let q = supabase
     .from('trips')
-    .select('*, company:companies(name), bus:buses(number_bus), driver:drivers(user:users(full_name)), origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name)')
+    .select(
+      '*, company:companies(name), bus:buses(number_bus), driver:drivers(user:users(full_name)), origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name)',
+      isPaged && !search ? { count: 'exact' } : undefined,
+    )
     .order('departure_datetime', { ascending: false });
 
   if (companyId) q = q.eq('company_id', companyId);
@@ -179,23 +187,24 @@ export async function listTrips(
   if (filters?.offerFilter === 'yes') q = q.eq('offer_is', true);
   if (filters?.offerFilter === 'no') q = q.eq('offer_is', false);
 
-  const { data, error } = await q;
+  if (isPaged && !search) {
+    q = q.range(offset, offset + pageSize - 1);
+  }
+
+  const { data, error, count } = await q;
   throwIfError(error);
 
   let rows = data ?? [];
-  const search = filters?.search?.trim().toLowerCase();
   if (search) {
-    rows = rows.filter((trip) => tripSearchHaystack(trip).includes(search));
+    const searchLower = search.toLowerCase();
+    rows = rows.filter((trip) => tripSearchHaystack(trip).includes(searchLower));
+    rows = sortTripsForList(rows);
   }
 
-  const sortedRows = sortTripsForList(rows);
-
-  if (page !== undefined) {
-    const currentPage = Math.max(1, page);
-    const total = sortedRows.length;
+  if (isPaged) {
+    const total = search ? rows.length : (count ?? rows.length);
     const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
-    const offset = (currentPage - 1) * pageSize;
-    const pagedRows = sortedRows.slice(offset, offset + pageSize);
+    const pagedRows = search ? rows.slice(offset, offset + pageSize) : rows;
 
     return {
       rows: pagedRows,
@@ -206,7 +215,7 @@ export async function listTrips(
     } as TripsListResult;
   }
 
-  return sortedRows;
+  return sortTripsForList(rows);
 }
 
 export async function getTripStops(tripId: string) {

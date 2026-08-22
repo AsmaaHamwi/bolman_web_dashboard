@@ -25,7 +25,7 @@ function buildValue(year: string, month: string, day: string): string {
 }
 
 const selectClass =
-  "h-full rounded-xl border-0 bg-transparent text-sm outline-none cursor-pointer focus:ring-0 text-slate-700 dark:text-white px-1";
+  "min-w-0 flex-1 h-full rounded-xl border-0 bg-transparent text-xs outline-none cursor-pointer focus:ring-0 text-slate-700 dark:text-white px-0.5 truncate";
 
 const optionClass = "text-slate-900 bg-white dark:bg-bolman-surfaceDark dark:text-white";
 
@@ -33,7 +33,7 @@ export function DateInput({ value, onChange, className, min }: DateInputProps) {
   const { year, month, day } = parseParts(value);
   const minParts = parseParts(min ?? "");
   const currentYear = new Date().getFullYear();
-  const yearFrom = Number(minParts.year) || currentYear - 3;
+  const yearFrom = Number(minParts.year) || currentYear;
   const yearTo = currentYear + 3;
   const dayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -52,7 +52,7 @@ export function DateInput({ value, onChange, className, min }: DateInputProps) {
   return (
     <div
       className={cx(
-        "flex items-center gap-0.5 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 transition focus-within:border-bolman-purple focus-within:ring-4 focus-within:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark",
+        "flex items-center gap-0.5 overflow-hidden min-w-0 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 transition focus-within:border-bolman-purple focus-within:ring-4 focus-within:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark",
         className,
       )}
       dir="rtl"

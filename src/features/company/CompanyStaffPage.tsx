@@ -162,13 +162,14 @@ export function CompanyStaffPage() {
               </div>
             </Td>
             <Td>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => openEdit(record)}>
-                  <Pencil size={16} />
+              <div className="flex items-center gap-1.5">
+                <Button variant="secondary" onClick={() => openEdit(record)} className="shrink-0 px-2.5 py-1.5 text-xs">
+                  <Pencil size={13} />
                   {messages.company.staff.editButton}
                 </Button>
                 <Button
                   variant={record.user?.status === 'active' ? 'danger' : 'mint'}
+                  className="shrink-0 px-2.5 py-1.5 text-xs"
                   onClick={() => toggleStatusMutation.mutate({ userId: record.user_id, status: record.user?.status === 'active' ? 'suspended' : 'active' })}
                 >
                   {record.user?.status === 'active' ? messages.common.disable : messages.common.enable}

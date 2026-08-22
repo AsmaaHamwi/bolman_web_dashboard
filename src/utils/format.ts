@@ -21,7 +21,7 @@ export function formatDateTime(value?: string | null) {
     const d = new Date(value);
     if (isNaN(d.getTime())) return value;
     const locale = getIntlLocale(getCurrentLocale());
-    const dateStr = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(d);
+    const dateStr = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
     const timeStr = new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d);
     return `${dateStr} • ${timeStr}`;
   } catch {
@@ -33,7 +33,9 @@ export function formatDate(value?: string | null) {
   if (!value) return '-';
 
   return new Intl.DateTimeFormat(getIntlLocale(getCurrentLocale()), {
-    dateStyle: 'medium',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
   }).format(new Date(value));
 }
 

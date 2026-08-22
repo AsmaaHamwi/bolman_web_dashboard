@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, MapPin, Search } from 'lucide-react';
+import { ChevronDown, MapPin, Search } from 'lucide-react';
 import { CityThumbnail } from './CityThumbnail';
 import { Input } from './Input';
 import { Modal } from './Modal';
@@ -94,27 +94,34 @@ export function CityPicker({
         }}
       >
         <div className="space-y-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <Input
-              className="ps-9"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={messages.common.search}
-              autoFocus
-            />
-          </div>
-
-          <div className="max-h-[min(52vh,360px)] overflow-y-auto rounded-2xl border border-slate-200 dark:border-bolman-borderDark">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <Input
+                className="ps-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={messages.common.search}
+                autoFocus
+              />
+            </div>
             <button
               type="button"
               onClick={clear}
-              className="flex w-full items-center gap-3 border-b border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 dark:border-bolman-borderDark dark:hover:bg-white/5"
+              className={cx(
+                'shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition',
+                !value
+                  ? 'border-bolman-purple bg-bolman-purple text-white'
+                  : 'border-slate-200 text-slate-500 hover:border-bolman-purple/40 hover:bg-slate-50 dark:border-bolman-borderDark dark:text-slate-400 dark:hover:bg-white/5',
+              )}
             >
-              {messages.common.choose}
+              الكل
             </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
             {filtered.length === 0 ? (
-              <div className="p-6 text-center text-sm text-slate-500">{messages.common.noData}</div>
+              <div className="col-span-3 py-6 text-center text-sm text-slate-500">{messages.common.noData}</div>
             ) : (
               filtered.map((city) => {
                 const isSelected = city.id === value;
@@ -124,20 +131,14 @@ export function CityPicker({
                     type="button"
                     onClick={() => pick(city)}
                     className={cx(
-                      'flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2 text-start transition last:border-b-0 dark:border-bolman-borderDark',
-                      isSelected ? 'bg-bolman-purple/8' : 'hover:bg-slate-50 dark:hover:bg-white/5',
+                      'flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-xs font-semibold transition',
+                      isSelected
+                        ? 'border-bolman-purple bg-bolman-purple/8 text-bolman-purple'
+                        : 'border-slate-200 text-slate-700 hover:border-bolman-purple/40 hover:bg-slate-50 dark:border-bolman-borderDark dark:text-slate-200 dark:hover:bg-white/5',
                     )}
                   >
-                    <CityThumbnail cityName={city.name} size={34} selected={isSelected} />
-                    <span
-                      className={cx(
-                        'min-w-0 flex-1 truncate text-sm',
-                        isSelected ? 'font-extrabold text-bolman-purple' : 'font-semibold text-slate-800 dark:text-slate-100',
-                      )}
-                    >
-                      {city.name}
-                    </span>
-                    {isSelected ? <CheckCircle2 size={18} className="shrink-0 text-bolman-purple" /> : null}
+                    <CityThumbnail cityName={city.name} size={36} selected={isSelected} />
+                    <span className="w-full truncate text-center">{city.name}</span>
                   </button>
                 );
               })

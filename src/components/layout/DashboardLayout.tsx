@@ -137,7 +137,7 @@ export function DashboardLayout() {
             </div>
           </div>
         </header>
-        <div className="p-4 sm:p-6">
+        <div className="px-4 pb-6 pt-3 sm:px-6 sm:pb-6 sm:pt-3.5">
           <Outlet />
         </div>
       </main>

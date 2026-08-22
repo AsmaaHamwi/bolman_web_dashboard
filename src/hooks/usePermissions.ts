@@ -10,6 +10,7 @@ export function useSystemStaffPermissions() {
     queryKey: ['my-system-permissions', profile?.id],
     queryFn: () => getSystemStaffPermissions(profile!.id),
     enabled: profile?.role === 'system_staff',
+    staleTime: 10 * 60_000,  // 10 minutes – permissions rarely change
   });
 }
 
@@ -21,5 +22,6 @@ export function useCompanyStaffPermissions() {
     queryKey: ['my-company-permissions', profile?.id, company.data],
     queryFn: () => getCompanyStaffPermissions(profile!.id, company.data!),
     enabled: profile?.role === 'company_staff' && !!company.data,
+    staleTime: 10 * 60_000,  // 10 minutes – permissions rarely change
   });
 }

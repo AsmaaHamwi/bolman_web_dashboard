@@ -8,6 +8,7 @@ export function useCompanyContext() {
     queryKey: ['my-company-id', profile?.id, profile?.role],
     queryFn: () => getMyCompanyId(profile!.id, profile!.role),
     enabled: !!profile && ['company_owner', 'company_staff'].includes(profile.role),
+    staleTime: Infinity,
   });
 }
 
@@ -16,5 +17,7 @@ export function useCompanyProfile(companyId?: string | null) {
     queryKey: ['company-profile', companyId],
     queryFn: () => getCompanyById(companyId!),
     enabled: !!companyId,
+    staleTime: 5 * 60_000,
   });
 }
+

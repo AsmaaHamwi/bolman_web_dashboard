@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../features/auth/AuthProvider';
 import { useCompanyStaffPermissions, useSystemStaffPermissions } from '../hooks/usePermissions';
 import {
@@ -28,7 +29,14 @@ export function PermissionRoute({ permission, children }: PermissionRouteProps) 
 
   if (profile.role === 'system_staff') {
     if (systemPermissions.isPending) {
-      return <div className="grid min-h-screen place-items-center text-bolman-purple">{messages.common.loading}</div>;
+      return (
+        <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-bolman-dark text-bolman-purple">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="text-sm font-medium">{messages.common.loading}</span>
+          </div>
+        </div>
+      );
     }
 
     return hasSystemRoutePermission(systemPermissions.data, permission as SystemRoutePermission)
@@ -38,7 +46,14 @@ export function PermissionRoute({ permission, children }: PermissionRouteProps) 
 
   if (profile.role === 'company_staff') {
     if (companyPermissions.isPending) {
-      return <div className="grid min-h-screen place-items-center text-bolman-purple">{messages.common.loading}</div>;
+      return (
+        <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-bolman-dark text-bolman-purple">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="text-sm font-medium">{messages.common.loading}</span>
+          </div>
+        </div>
+      );
     }
 
     return hasCompanyRoutePermission(companyPermissions.data, permission as CompanyRoutePermission)

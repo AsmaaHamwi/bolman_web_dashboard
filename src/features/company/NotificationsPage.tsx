@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Bus,
   Calendar,
@@ -13,6 +14,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+
 import { useTrips } from '../../hooks/useTrips';
 import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -25,14 +27,17 @@ import {
   sendTripNotification,
   sendUserNotification,
   searchUsers,
+  searchCompanyPassengers,
   getTripPassengers,
 } from '../../services/notification.service';
+import { useAuth } from '../auth/AuthProvider';
 import { formatDate, formatDateTime, formatTime } from '../../utils/format';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 type NotifMode = 'general' | 'trip' | 'user';
+type UserSource = 'system' | 'company' | 'trip';
 
 // ─────────────────────────────────────────────
 // Sub-component: Trip Picker Modal
@@ -48,6 +53,7 @@ function TripPickerModal({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredTrips = useMemo(() => {
@@ -153,7 +159,7 @@ function TripPickerModal({
                       <button
                         key={trip.id}
                         type="button"
-                        onClick={() => { onSelect(trip.id); onClose(); }}
+                        onClick={() => { prefetchTripPassengers(qc, trip.id); onSelect(trip.id); onClose(); }}
                         className={`flex flex-col justify-between rounded-2xl p-4 text-start transition-all shadow-sm ${
                           isSelected
                             ? 'bg-bolman-purple/15 border-2 border-bolman-purple text-slate-900 dark:text-white ring-2 ring-bolman-purple/20'
@@ -243,6 +249,20 @@ function SelectedTripBadge({ trip, onChangeTripClick }: { trip: any; onChangeTri
 }
 
 // ─────────────────────────────────────────────
+// Helper: prefetch passengers into React Query cache
+// ─────────────────────────────────────────────
+export const TRIP_PASSENGERS_STALE_MS = 5 * 60_000; // 5 minutes
+
+export function prefetchTripPassengers(qc: ReturnType<typeof useQueryClient>, tripId: string) {
+  if (!tripId) return;
+  qc.prefetchQuery({
+    queryKey: ['trip-passengers', tripId],
+    queryFn: () => getTripPassengers(tripId),
+    staleTime: TRIP_PASSENGERS_STALE_MS,
+  });
+}
+
+// ─────────────────────────────────────────────
 // Sub-component: Trip Passengers Picker
 // Used for "trip_selected" and "user from trip"
 // ─────────────────────────────────────────────
@@ -254,23 +274,52 @@ function TripPassengersPicker({
 }: {
   tripId: string;
   selectedUserIds: string[];
-  onToggle: (userId: string) => void;
+  onToggle: (userId: string, userName: string) => void;
   singleSelect?: boolean;
 }) {
+  const qc = useQueryClient();
   const [passengers, setPassengers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [passengerSearch, setPassengerSearch] = useState('');
 
-  // Load passengers when tripId changes
-  useMemo(() => {
-    if (!tripId) { setPassengers([]); setLoaded(false); return; }
+  // Load passengers from cache first, then fetch if stale
+  useEffect(() => {
+    if (!tripId) {
+      setPassengers([]);
+      setLoaded(false);
+      return;
+    }
+
+    // Check if we already have fresh data in the React Query cache
+    const cached = qc.getQueryData<any[]>(['trip-passengers', tripId]);
+    if (cached) {
+      setPassengers(cached);
+      setLoaded(true);
+      setLoading(false);
+      return;
+    }
+
+    // No cache — fetch and store in cache
     setLoading(true);
-    getTripPassengers(tripId)
-      .then((data) => { setPassengers(data); setLoaded(true); })
-      .catch(() => setLoaded(true))
-      .finally(() => setLoading(false));
-  }, [tripId]);
+    setLoaded(false);
+    qc.fetchQuery({
+      queryKey: ['trip-passengers', tripId],
+      queryFn: () => getTripPassengers(tripId),
+      staleTime: TRIP_PASSENGERS_STALE_MS,
+    })
+      .then((data) => {
+        setPassengers(data);
+        setLoaded(true);
+      })
+      .catch((err) => {
+        console.error('Error loading passengers:', err);
+        setLoaded(true);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [tripId, qc]);
 
   const filtered = useMemo(() => {
     const q = passengerSearch.trim().toLowerCase();
@@ -335,7 +384,7 @@ function TripPassengersPicker({
               <button
                 key={p.user_id}
                 type="button"
-                onClick={() => onToggle(p.user_id)}
+                onClick={() => onToggle(p.user_id, p.full_name)}
                 className={`flex w-full items-center gap-3 px-4 py-3 text-start transition-all hover:bg-slate-50 dark:hover:bg-bolman-surfaceDark/50 ${
                   isSelected ? 'bg-bolman-purple/5 dark:bg-bolman-purple/10' : ''
                 }`}
@@ -373,14 +422,19 @@ function TripPassengersPicker({
   );
 }
 
+
 // ─────────────────────────────────────────────
-// Sub-component: User Search (system-wide)
+// Sub-component: User Search (system-wide or company-specific)
 // ─────────────────────────────────────────────
 function UserSearchPicker({
+  companyId,
+  isSystemUser,
   selectedUserId,
   selectedUserName,
   onSelect,
 }: {
+  companyId?: string | null;
+  isSystemUser: boolean;
   selectedUserId: string;
   selectedUserName: string;
   onSelect: (user: { id: string; full_name: string; phone: string | null }) => void;
@@ -390,14 +444,20 @@ function UserSearchPicker({
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
+  async function triggerSearch() {
     if (!query.trim()) return;
     setLoading(true);
     setSearched(true);
     try {
-      const data = await searchUsers(query.trim());
-      setResults(data);
+      if (isSystemUser) {
+        const data = await searchUsers(query.trim());
+        setResults(data);
+      } else if (companyId) {
+        const data = await searchCompanyPassengers(companyId, query.trim());
+        setResults(data);
+      } else {
+        setResults([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -406,18 +466,33 @@ function UserSearchPicker({
   return (
     <div className="space-y-3">
       {/* Search form */}
-      <form onSubmit={handleSearch} className="flex gap-2">
+      <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="ابحث بالاسم أو رقم الهاتف..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                triggerSearch();
+              }
+            }}
+            placeholder={
+              isSystemUser
+                ? 'ابحث بالاسم أو رقم الهاتف...'
+                : 'ابحث بالاسم أو الهاتف ضمن مسافري ورواد الشركة...'
+            }
             className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 ps-9 pe-3 text-sm text-slate-900 placeholder-slate-400 focus:border-bolman-purple focus:outline-none focus:ring-2 focus:ring-bolman-purple/10 dark:border-slate-700 dark:bg-bolman-surfaceDark dark:text-white"
           />
         </div>
-        <Button type="submit" disabled={!query.trim() || loading} className="gap-1.5 px-4 py-2.5 text-xs">
+        <Button
+          type="button"
+          onClick={triggerSearch}
+          disabled={!query.trim() || loading}
+          className="gap-1.5 px-4 py-2.5 text-xs"
+        >
           {loading ? (
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
           ) : (
@@ -425,7 +500,7 @@ function UserSearchPicker({
           )}
           بحث
         </Button>
-      </form>
+      </div>
 
       {/* Selected user badge */}
       {selectedUserId && (
@@ -436,7 +511,9 @@ function UserSearchPicker({
             </div>
             <div>
               <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedUserName}</p>
-              <p className="text-xs text-slate-500">مستخدم محدد</p>
+              <p className="text-xs text-slate-500">
+                {isSystemUser ? 'مستخدم محدد' : 'مسافر محدد من رواد الشركة'}
+              </p>
             </div>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-bolman-purple px-2.5 py-0.5 text-[10px] font-extrabold text-white">
@@ -449,7 +526,9 @@ function UserSearchPicker({
       {searched && !loading && (
         <div className="max-h-52 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
           {results.length === 0 ? (
-            <div className="py-6 text-center text-xs text-slate-500">لا توجد نتائج</div>
+            <div className="py-6 text-center text-xs text-slate-500">
+              {isSystemUser ? 'لا توجد نتائج في النظام' : 'لا يوجد مسافرون مطابقون ضمن رواد الشركة'}
+            </div>
           ) : (
             results.map((u: any) => {
               const isSelected = selectedUserId === u.id;
@@ -484,17 +563,28 @@ function UserSearchPicker({
 // Main Page
 // ─────────────────────────────────────────────
 export function NotificationsPage() {
+  const { profile } = useAuth();
+  const isSystemUser = profile?.role === 'super_admin' || profile?.role === 'system_staff';
+
   const { data: companyId } = useCompanyContext();
-  const { data: trips = [] } = useTrips(companyId, { enabled: !!companyId });
+  const { data: tripsData } = useTrips(isSystemUser ? null : companyId, {
+    enabled: isSystemUser ? true : !!companyId,
+    pageSize: 1000,
+  });
+  const trips = useMemo(() => {
+    if (!tripsData) return [];
+    return Array.isArray(tripsData) ? tripsData : (tripsData.rows ?? []);
+  }, [tripsData]);
   const { messages } = useI18n();
 
   // Active tab
-  const [mode, setMode] = useState<NotifMode>('general');
+  const [mode, setMode] = useState<NotifMode>(() => (isSystemUser ? 'general' : 'trip'));
 
   // Shared fields
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [done, setDone] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Trip mode state
@@ -504,7 +594,7 @@ export function NotificationsPage() {
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
 
   // User mode state
-  const [userSource, setUserSource] = useState<'system' | 'trip'>('system');
+  const [userSource, setUserSource] = useState<UserSource>(() => (isSystemUser ? 'system' : 'company'));
   const [userTripId, setUserTripId] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUserName, setSelectedUserName] = useState('');
@@ -517,13 +607,19 @@ export function NotificationsPage() {
   function switchMode(newMode: NotifMode) {
     setMode(newMode);
     setDone('');
+    setErrorMsg('');
     setTitle('');
     setMessage('');
     if (newMode !== 'trip') { setTripId(''); setSelectedPassengerIds([]); setTripAudience('all'); }
-    if (newMode !== 'user') { setUserTripId(''); setSelectedUserId(''); setSelectedUserName(''); setUserSource('system'); }
+    if (newMode !== 'user') {
+      setUserTripId('');
+      setSelectedUserId('');
+      setSelectedUserName('');
+      setUserSource(isSystemUser ? 'system' : 'company');
+    }
   }
 
-  function togglePassenger(userId: string) {
+  function togglePassenger(userId: string, userName: string) {
     setSelectedPassengerIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     );
@@ -535,8 +631,6 @@ export function NotificationsPage() {
       setSelectedUserId('');
       setSelectedUserName('');
     } else {
-      const trip = trips.find((t: any) => t.id === userTripId);
-      // Name will be populated from the passengers list via the component
       setSelectedUserId(userId);
     }
   }
@@ -558,27 +652,39 @@ export function NotificationsPage() {
     e.preventDefault();
     setIsSubmitting(true);
     setDone('');
+    setErrorMsg('');
     try {
+      let res: any;
       if (mode === 'general') {
-        await sendGeneralNotification({ title, message });
+        res = await sendGeneralNotification({ title, message });
       } else if (mode === 'trip') {
         if (tripAudience === 'all') {
-          await sendTripNotification({ trip_id: tripId, title, message, type: 'trip_notice' });
+          res = await sendTripNotification({ trip_id: tripId, title, message, type: 'trip_notice' });
         } else {
-          await sendTripNotification({ trip_id: tripId, title, message, type: 'trip_notice', user_ids: selectedPassengerIds });
+          res = await sendTripNotification({ trip_id: tripId, title, message, type: 'trip_notice', user_ids: selectedPassengerIds });
         }
       } else if (mode === 'user') {
-        await sendUserNotification({
+        res = await sendUserNotification({
           user_id: selectedUserId,
           title,
           message,
           trip_id: userSource === 'trip' ? userTripId : undefined,
         });
       }
-      setDone(messages.company.notifications.success);
+
+      if (res?.push?.warning) {
+        setDone(`تم إرسال وتخزين الإشعار بالتطبيق بنجاح. (تنبيه Push: ${res.push.warning})`);
+      } else if (res?.recipients === 0) {
+        setErrorMsg('لم يتم إرسال الإشعار لعدم وجود مستخدمين لديهم حساب مسجل بالتطبيق على هذه الرحلة.');
+      } else {
+        setDone(messages.company.notifications.success);
+      }
       setTitle('');
       setMessage('');
       setSelectedPassengerIds([]);
+    } catch (err: any) {
+      console.error('Notification submission failed:', err);
+      setErrorMsg(err?.message || 'حدث خطأ غير متوقع أثناء إرسال الإشعار.');
     } finally {
       setIsSubmitting(false);
     }
@@ -586,76 +692,101 @@ export function NotificationsPage() {
 
   // Mode config for tabs
   const tabs: { key: NotifMode; label: string; icon: React.ReactNode; description: string }[] = [
+    ...(isSystemUser
+      ? [
+          {
+            key: 'general' as NotifMode,
+            label: 'إشعار عام',
+            icon: <Globe size={18} />,
+            description: 'إرسال لكل مستخدمي التطبيق',
+          },
+        ]
+      : []),
     {
-      key: 'general',
-      label: 'إشعار عام',
-      icon: <Globe size={18} />,
-      description: 'إرسال لكل مستخدمي التطبيق',
-    },
-    {
-      key: 'trip',
+      key: 'trip' as NotifMode,
       label: 'رحلة محددة',
       icon: <Bus size={18} />,
       description: 'إرسال لمسافري رحلة بعينها',
     },
     {
-      key: 'user',
+      key: 'user' as NotifMode,
       label: 'مستخدم واحد',
       icon: <User size={18} />,
       description: 'إرسال لمستخدم محدد',
     },
   ];
 
+  const userSourceOptions = isSystemUser
+    ? [
+        { value: 'system' as UserSource, label: 'من النظام', desc: 'بحث عام بالاسم أو الهاتف', icon: <Globe size={16} /> },
+        { value: 'trip' as UserSource, label: 'من رحلة محددة', desc: 'اختر مسافراً من رحلة بعينها', icon: <Bus size={16} /> },
+      ]
+    : [
+        { value: 'company' as UserSource, label: 'من رواد الشركة', desc: 'بحث بالاسم أو الهاتف ضمن مسافري الشركة', icon: <Users size={16} /> },
+        { value: 'trip' as UserSource, label: 'من رحلة محددة', desc: 'اختر مسافراً من رحلة بعينها', icon: <Bus size={16} /> },
+      ];
+
   return (
     <div className="space-y-6">
       <PageHeader title={messages.company.notifications.title} subtitle={messages.company.notifications.subtitle} />
 
-      {/* Mode Tabs */}
-      <div className="grid grid-cols-3 gap-3">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => switchMode(tab.key)}
-            className={`flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition-all ${
-              mode === tab.key
-                ? 'border-bolman-purple bg-bolman-purple/5 text-bolman-purple dark:bg-bolman-purple/10'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-bolman-borderDark dark:bg-bolman-cardDark dark:text-slate-400 dark:hover:bg-bolman-surfaceDark'
-            }`}
-          >
-            <div className={`grid h-10 w-10 place-items-center rounded-2xl ${
-              mode === tab.key ? 'bg-bolman-purple text-white shadow-glow' : 'bg-slate-100 dark:bg-slate-800'
-            }`}>
-              {tab.icon}
+      {/* Main Form Card containing Header + Mode Switcher + Body */}
+      <Card className="w-full shadow-sm border border-slate-200/80 dark:border-bolman-borderDark rounded-3xl p-6 sm:p-7">
+        {/* Card Header & Mode Switcher Bar */}
+        <div className="flex flex-col gap-4 border-b border-slate-100 pb-6 dark:border-bolman-borderDark sm:flex-row sm:items-center sm:justify-between">
+          {/* Title & Icon for current active mode */}
+          <div className="flex items-center gap-3.5">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-bolman-purple/10 text-bolman-purple dark:bg-bolman-purple/20">
+              {mode === 'general' ? <Globe size={22} /> : mode === 'trip' ? <Bus size={22} /> : <User size={22} />}
             </div>
             <div>
-              <p className={`text-sm font-extrabold ${mode === tab.key ? 'text-bolman-purple' : 'text-slate-800 dark:text-white'}`}>
-                {tab.label}
+              <CardTitle className="text-base sm:text-lg">
+                {mode === 'general'
+                  ? 'إشعار عام لكل المستخدمين'
+                  : mode === 'trip'
+                  ? 'إشعار رحلة محددة'
+                  : isSystemUser
+                  ? 'إشعار مستخدم محدد'
+                  : 'إشعار مسافر من رواد الشركة'}
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                {mode === 'general'
+                  ? 'سيصل هذا الإشعار لجميع مستخدمي التطبيق المسجلين'
+                  : mode === 'trip'
+                  ? 'قم باختيار الرحلة المطلوبة وتحديد المستهدفين من مسافريها'
+                  : isSystemUser
+                  ? 'ابحث عن مستخدم محدد في النظام وأرسل له إشعاراً مخصصاً'
+                  : 'ابحث عن مسافر من رواد الشركة وأرسل له إشعاراً مخصصاً'}
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{tab.description}</p>
             </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Form Card */}
-      <Card className="w-full">
-        {/* Card Header */}
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-bolman-borderDark">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-bolman-purple/10 text-bolman-purple">
-            {mode === 'general' ? <Globe size={20} /> : mode === 'trip' ? <Bus size={20} /> : <User size={20} />}
           </div>
-          <div>
-            <CardTitle>
-              {mode === 'general' ? 'إشعار عام لكل المستخدمين' : mode === 'trip' ? 'إشعار رحلة' : 'إشعار مستخدم'}
-            </CardTitle>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {mode === 'general'
-                ? 'سيصل هذا الإشعار لجميع مستخدمي التطبيق المسجلين'
-                : mode === 'trip'
-                ? 'قم باختيار الرحلة المطلوبة وتحديد المستهدفين من مسافريها'
-                : 'ابحث عن مستخدم محدد وأرسل له إشعاراً مخصصاً'}
-            </p>
+
+          {/* Mode Switcher Buttons inside the same white bar */}
+          <div className="inline-flex rounded-2xl bg-slate-100/90 p-1.5 dark:bg-bolman-surfaceDark border border-slate-200/70 dark:border-bolman-borderDark shrink-0">
+            {tabs.map((tab) => {
+              const isActive = mode === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => switchMode(tab.key)}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
+                    isActive
+                      ? 'bg-white text-bolman-purple shadow-sm dark:bg-bolman-cardDark dark:text-white ring-1 ring-slate-200/50 dark:ring-bolman-borderDark'
+                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                  }`}
+                >
+                  <div
+                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg transition-colors ${
+                      isActive ? 'bg-bolman-purple text-white' : 'bg-slate-200/70 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                  >
+                    {tab.icon}
+                  </div>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -672,19 +803,23 @@ export function NotificationsPage() {
                   <button
                     type="button"
                     onClick={() => setIsTripModalOpen(true)}
-                    className="flex w-full items-center justify-between rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-4 text-start transition-all hover:border-bolman-purple hover:bg-bolman-purple/5 dark:border-slate-700 dark:bg-bolman-surfaceDark/50 dark:hover:border-bolman-purple"
+                    className="group flex w-full items-center justify-between gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 p-4 text-start transition-all hover:border-bolman-purple hover:bg-bolman-purple/5 dark:border-slate-700 dark:bg-bolman-surfaceDark/40 dark:hover:border-bolman-purple"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 place-items-center rounded-xl bg-bolman-purple/10 text-bolman-purple">
-                        <Search size={20} />
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-bolman-purple/10 text-bolman-purple group-hover:bg-bolman-purple group-hover:text-white transition-colors">
+                        <Search size={18} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">اضغط هنا لاختيار وتحديد الرحلة المستهدفة</h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">ستظهر شاشة منبثقة تتيح لك البحث السريع بأسماء المدن والمواعيد</p>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-white">
+                          اضغط هنا لاختيار وتحديد الرحلة المستهدفة
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          ستظهر نافذة للبحث السريع بأسماء المدن والمواعيد
+                        </p>
                       </div>
                     </div>
-                    <span className="rounded-xl bg-bolman-purple px-4 py-2 text-xs font-bold text-white shadow-sm">
-                      عرض الرحلات المتاحة 🔍
+                    <span className="shrink-0 rounded-xl bg-bolman-purple px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-transform group-hover:scale-105">
+                      عرض الرحلات 🔍
                     </span>
                   </button>
                 )}
@@ -693,32 +828,32 @@ export function NotificationsPage() {
               {/* Audience selection (only after trip is chosen) */}
               {tripId && (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">المستهدفون بالإشعار</p>
+                  <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">المستهدفون بالإشعار</p>
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { value: 'all', label: 'كل المسافرين', desc: 'إرسال لجميع مسافري الرحلة', icon: <Users size={16} /> },
-                      { value: 'selected', label: 'مسافرون محددون', desc: 'اختر مسافرين بعينهم', icon: <User size={16} /> },
+                      { value: 'selected', label: 'مسافرون محددون', desc: 'تحديد مسافرين بالاسم', icon: <User size={16} /> },
                     ].map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => { setTripAudience(opt.value as 'all' | 'selected'); setSelectedPassengerIds([]); }}
-                        className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-start transition-all ${
+                        className={`flex items-center gap-2.5 rounded-2xl border p-3 text-start transition-all ${
                           tripAudience === opt.value
-                            ? 'border-bolman-purple bg-bolman-purple/5 dark:bg-bolman-purple/10'
-                            : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-bolman-surfaceDark/30'
+                            ? 'border-bolman-purple bg-bolman-purple/10 text-bolman-purple dark:bg-bolman-purple/15 ring-1 ring-bolman-purple/20'
+                            : 'border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 dark:text-slate-300'
                         }`}
                       >
-                        <div className={`grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl ${
+                        <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
                           tripAudience === opt.value ? 'bg-bolman-purple text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                         }`}>
                           {opt.icon}
                         </div>
-                        <div>
-                          <p className={`text-xs font-bold ${tripAudience === opt.value ? 'text-bolman-purple' : 'text-slate-800 dark:text-white'}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-extrabold truncate ${tripAudience === opt.value ? 'text-bolman-purple' : 'text-slate-800 dark:text-white'}`}>
                             {opt.label}
                           </p>
-                          <p className="text-[10px] text-slate-500">{opt.desc}</p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{opt.desc}</p>
                         </div>
                       </button>
                     ))}
@@ -726,7 +861,7 @@ export function NotificationsPage() {
 
                   {/* Passenger checkboxes for "selected" mode */}
                   {tripAudience === 'selected' && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-3">
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-3">
                       <p className="text-xs font-bold text-slate-600 dark:text-slate-300">اختر المسافرين المستهدفين (الحد الأدنى: 1)</p>
                       <TripPassengersPicker
                         tripId={tripId}
@@ -745,48 +880,49 @@ export function NotificationsPage() {
             <div className="space-y-5">
               {/* User Source */}
               <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">مصدر اختيار المستخدم</p>
+                <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200">مصدر اختيار المستخدم</p>
                 <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { value: 'system', label: 'من النظام', desc: 'بحث عام بالاسم أو الهاتف', icon: <Globe size={16} /> },
-                    { value: 'trip', label: 'من رحلة محددة', desc: 'اختر مسافراً من رحلة بعينها', icon: <Bus size={16} /> },
-                  ].map((opt) => (
+                  {userSourceOptions.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => {
-                        setUserSource(opt.value as 'system' | 'trip');
+                        setUserSource(opt.value);
                         setSelectedUserId('');
                         setSelectedUserName('');
                         setUserTripId('');
                       }}
-                      className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-start transition-all ${
+                      className={`flex items-center gap-2.5 rounded-2xl border p-3 text-start transition-all ${
                         userSource === opt.value
-                          ? 'border-bolman-purple bg-bolman-purple/5 dark:bg-bolman-purple/10'
-                          : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-bolman-surfaceDark/30'
+                          ? 'border-bolman-purple bg-bolman-purple/10 text-bolman-purple dark:bg-bolman-purple/15 ring-1 ring-bolman-purple/20'
+                          : 'border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 dark:text-slate-300'
                       }`}
                     >
-                      <div className={`grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl ${
+                      <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
                         userSource === opt.value ? 'bg-bolman-purple text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                       }`}>
                         {opt.icon}
                       </div>
-                      <div>
-                        <p className={`text-xs font-bold ${userSource === opt.value ? 'text-bolman-purple' : 'text-slate-800 dark:text-white'}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs font-extrabold truncate ${userSource === opt.value ? 'text-bolman-purple' : 'text-slate-800 dark:text-white'}`}>
                           {opt.label}
                         </p>
-                        <p className="text-[10px] text-slate-500">{opt.desc}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{opt.desc}</p>
                       </div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* System search */}
-              {userSource === 'system' && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-2">
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">ابحث عن المستخدم</p>
+              {/* System or Company Search */}
+              {(userSource === 'system' || userSource === 'company') && (
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-2">
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    {isSystemUser ? 'ابحث عن المستخدم في النظام' : 'ابحث عن مسافر من رواد الشركة'}
+                  </p>
                   <UserSearchPicker
+                    companyId={companyId}
+                    isSystemUser={isSystemUser}
                     selectedUserId={selectedUserId}
                     selectedUserName={selectedUserName}
                     onSelect={(u) => { setSelectedUserId(u.id); setSelectedUserName(u.full_name); }}
@@ -804,18 +940,18 @@ export function NotificationsPage() {
                       <button
                         type="button"
                         onClick={() => setIsUserTripModalOpen(true)}
-                        className="flex w-full items-center justify-between rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/80 p-4 text-start transition-all hover:border-bolman-purple hover:bg-bolman-purple/5 dark:border-slate-700 dark:bg-bolman-surfaceDark/50"
+                        className="group flex w-full items-center justify-between gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 p-4 text-start transition-all hover:border-bolman-purple hover:bg-bolman-purple/5 dark:border-slate-700 dark:bg-bolman-surfaceDark/40"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="grid h-10 w-10 place-items-center rounded-xl bg-bolman-purple/10 text-bolman-purple">
-                            <Search size={20} />
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-bolman-purple/10 text-bolman-purple group-hover:bg-bolman-purple group-hover:text-white transition-colors">
+                            <Search size={18} />
                           </div>
                           <div>
-                            <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">اضغط لاختيار الرحلة</h4>
-                            <p className="text-xs text-slate-500">ثم ستتمكن من اختيار مسافر من هذه الرحلة</p>
+                            <h4 className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-white">اضغط لاختيار الرحلة</h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">ثم ستتمكن من اختيار مسافر محدد من هذه الرحلة</p>
                           </div>
                         </div>
-                        <span className="rounded-xl bg-bolman-purple px-4 py-2 text-xs font-bold text-white shadow-sm">
+                        <span className="shrink-0 rounded-xl bg-bolman-purple px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-transform group-hover:scale-105">
                           عرض الرحلات 🔍
                         </span>
                       </button>
@@ -824,17 +960,18 @@ export function NotificationsPage() {
 
                   {/* Passengers list (single select) */}
                   {userTripId && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-3">
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-bolman-surfaceDark/30 space-y-3">
                       <p className="text-xs font-bold text-slate-600 dark:text-slate-300">اختر المسافر المستهدف</p>
                       <TripPassengersPicker
                         tripId={userTripId}
                         selectedUserIds={selectedUserId ? [selectedUserId] : []}
-                        onToggle={(uid) => {
+                        onToggle={(uid, uname) => {
                           if (selectedUserId === uid) {
                             setSelectedUserId('');
                             setSelectedUserName('');
                           } else {
                             setSelectedUserId(uid);
+                            setSelectedUserName(uname);
                           }
                         }}
                         singleSelect
@@ -889,6 +1026,13 @@ export function NotificationsPage() {
                 : 'إرسال لكل مسافري الرحلة'
               : 'إرسال للمستخدم المحدد'}
           </Button>
+
+          {/* Error message */}
+          {errorMsg && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center text-xs font-bold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              {errorMsg}
+            </div>
+          )}
 
           {/* Success message */}
           {done && (

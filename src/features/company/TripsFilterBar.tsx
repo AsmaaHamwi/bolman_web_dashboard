@@ -235,7 +235,7 @@ export function TripsFilterBar({ filters, cities, onChange, onReset, loading = f
 
 
 
-      <CompactFilterControl label={copy.offerFilter} className="min-w-[8rem] max-w-[10rem]">
+      <CompactFilterControl label={copy.offerFilter}>
 
         <Select
 
