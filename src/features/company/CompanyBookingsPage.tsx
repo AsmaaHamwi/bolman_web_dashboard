@@ -68,7 +68,7 @@ export function CompanyBookingsPage() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
   const [queryFilters, setQueryFilters] = useState<BookingsListFilters>(EMPTY_BOOKINGS_FILTERS);
-  const { data, isPending, error, isError, isFetching } = useBookings(companyId, {
+  const { data, isPending, error, isError, isFetching, refetch } = useBookings(companyId, {
     enabled: !!companyId,
     page,
     pageSize: BOOKINGS_PAGE_SIZE,
@@ -134,10 +134,18 @@ export function CompanyBookingsPage() {
       ) : null}
 
       {isError && error ? (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-          {error instanceof Error ? error.message : messages.common.unexpectedError}
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          <span>{error instanceof Error ? error.message : messages.common.unexpectedError}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       ) : null}
+
 
       {total > 0 ? (
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">

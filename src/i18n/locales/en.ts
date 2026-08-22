@@ -80,6 +80,10 @@ export const en = {
     welcome: 'Welcome',
     welcomeOwner: 'Welcome, owner of "{companyName}"',
     logout: 'Logout',
+    logoutConfirmTitle: 'Confirm Logout',
+    logoutConfirmMessage: 'Are you sure you want to log out?',
+    logoutConfirmButton: 'Log Out',
+    cancel: 'Cancel',
     navigation: {
       overview: 'Overview',
       companies: 'Companies',

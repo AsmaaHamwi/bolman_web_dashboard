@@ -55,12 +55,25 @@ function TripPickerModal({
 }) {
   const qc = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+  const [timeRange, setTimeRange] = useState<'3days' | 'all'>('3days');
 
   const filteredTrips = useMemo(() => {
     const rawQ = searchQuery.trim().toLowerCase();
-    if (!rawQ) return trips;
-    const keywords = rawQ.split(/[\s\-\—\←\⬅]+/).filter(Boolean);
+
     return trips.filter((trip: any) => {
+      // 1. Time range filter (default: 3 days)
+      if (timeRange === '3days') {
+        if (!trip.departure_datetime) return false;
+        const depTime = new Date(trip.departure_datetime).getTime();
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const endOf3Days = startOfToday + 4 * 24 * 60 * 60 * 1000 - 1;
+        if (depTime < startOfToday || depTime > endOf3Days) return false;
+      }
+
+      // 2. Search query filter
+      if (!rawQ) return true;
+      const keywords = rawQ.split(/[\s\-\—\←\⬅]+/).filter(Boolean);
       const origin = (trip.origin?.name || '').toLowerCase();
       const destination = (trip.destination?.name || '').toLowerCase();
       const busPlate = (trip.bus?.plate_number || '').toLowerCase();
@@ -71,7 +84,7 @@ function TripPickerModal({
       const combined = `${origin} ${destination} ${busPlate} ${dateStr} ${timeStr} ${fullDateStr} ${id}`;
       return keywords.every((kw) => combined.includes(kw));
     });
-  }, [trips, searchQuery]);
+  }, [trips, searchQuery, timeRange]);
 
   const groupedTrips = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -106,8 +119,8 @@ function TripPickerModal({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="p-4 border-b border-slate-100 bg-white dark:border-bolman-borderDark dark:bg-bolman-cardDark">
+        {/* Search & Filter */}
+        <div className="p-4 border-b border-slate-100 bg-white dark:border-bolman-borderDark dark:bg-bolman-cardDark space-y-3">
           <div className="relative flex items-center">
             <Search size={20} className="absolute start-4 text-bolman-purple pointer-events-none" />
             <input
@@ -128,6 +141,35 @@ function TripPickerModal({
               </button>
             )}
           </div>
+
+          {/* Time range selector */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-400">عرض الرحلات:</span>
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-bolman-surfaceDark border border-slate-200/70 dark:border-bolman-borderDark">
+              <button
+                type="button"
+                onClick={() => setTimeRange('3days')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                  timeRange === '3days'
+                    ? 'bg-bolman-purple text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                📅 خلال 3 أيام القادمة (افتراضي)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeRange('all')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                  timeRange === 'all'
+                    ? 'bg-bolman-purple text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                🌐 كل الرحلات ({trips.length})
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Body */}
@@ -137,8 +179,22 @@ function TripPickerModal({
               <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800">
                 <Search size={28} />
               </div>
-              <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">لا توجد رحلات تطابق البحث</h4>
-              <p className="text-xs text-slate-500">جرب البحث بكلمات أخرى أو مسح حقل البحث</p>
+              <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                {timeRange === '3days' ? 'لا توجد رحلات قادمة خلال الـ 3 أيام القادمة' : 'لا توجد رحلات تطابق البحث'}
+              </h4>
+              <p className="text-xs text-slate-500">
+                {timeRange === '3days' ? (
+                  <button
+                    type="button"
+                    onClick={() => setTimeRange('all')}
+                    className="font-bold text-bolman-purple underline hover:text-purple-700"
+                  >
+                    اضغط هنا لعرض كل الرحلات المتاحة ({trips.length})
+                  </button>
+                ) : (
+                  'جرب البحث بكلمات أخرى أو مسح حقل البحث'
+                )}
+              </p>
             </div>
           ) : (
             Object.entries(groupedTrips).map(([routeKey, routeTrips]) => (

@@ -13,7 +13,7 @@ import { formatMoney } from '../../utils/format';
 export function CompanyOverviewPage() {
   const navigate = useNavigate();
   const { data: companyId } = useCompanyContext();
-  const { data, isPending } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['company-kpis', companyId],
     queryFn: () => getCompanyKpis(companyId),
     enabled: !!companyId,
@@ -44,6 +44,20 @@ export function CompanyOverviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={messages.company.overview.title} subtitle={messages.company.overview.subtitle} />
+
+      {isError && error ? (
+        <div className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          <span>{error instanceof Error ? error.message : messages.common.unexpectedError}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : null}
+
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard title={messages.common.trips} value={data?.trips} isLoading={isLoading} icon={CalendarDays} onClick={() => navigate('/company/trips')} />

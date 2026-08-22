@@ -79,7 +79,11 @@ export const ar = {
   layout: {
     welcome: 'مرحبًا',
     welcomeOwner: 'مرحبًا بك مالك شركة "{companyName}"',
-    logout: 'خروج',
+    logout: 'تسجيل الخروج',
+    logoutConfirmTitle: 'تأكيد تسجيل الخروج',
+    logoutConfirmMessage: 'هل تريد تسجيل الخروج حقاً؟',
+    logoutConfirmButton: 'تسجيل الخروج',
+    cancel: 'إلغاء',
     navigation: {
       overview: 'الرئيسية',
       companies: 'الشركات',

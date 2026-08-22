@@ -45,7 +45,7 @@ export function TripsPage() {
   const [filters, setFilters] = useState<TripsListFilters>(initialFilters);
   const [queryFilters, setQueryFilters] = useState<TripsListFilters>(initialFilters);
   const { data: cities = [] } = useCities();
-  const { data, isPending, isFetching, isError, error } = useTrips(companyId, {
+  const { data, isPending, isFetching, isError, error, refetch } = useTrips(companyId, {
     enabled: !!companyId,
     page,
     pageSize: TRIPS_PAGE_SIZE,
@@ -121,10 +121,18 @@ export function TripsPage() {
       ) : null}
 
       {isError && error ? (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-          {error instanceof Error ? error.message : messages.common.unexpectedError}
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          <span>{error instanceof Error ? error.message : messages.common.unexpectedError}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       ) : null}
+
 
       {total > 0 ? (
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">

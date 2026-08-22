@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBusWithSeats, createDriver, createRestStop, listBuses, listBusSeats, listDrivers, listRestStops } from '../services/fleet.service';
+import { createBusWithSeats, createDriver, createRestStop, deleteBus, listBuses, listBusSeats, listDrivers, listRestStops } from '../services/fleet.service';
 
 export const useBuses = (
   companyId?: string | null,
@@ -18,15 +18,42 @@ export const useDrivers = (companyId?: string | null, options?: { enabled?: bool
   useQuery({ queryKey: ['drivers', companyId], queryFn: () => listDrivers(companyId), enabled: options?.enabled });
 export const useBusSeats = (busId?: string) => useQuery({ queryKey: ['bus-seats', busId], queryFn: () => listBusSeats(busId!), enabled: !!busId });
 export const useRestStops = (companyId?: string | null) => useQuery({ queryKey: ['rest-stops', companyId], queryFn: () => listRestStops(companyId!), enabled: !!companyId });
-export function useCreateBus() { const qc = useQueryClient(); return useMutation({ mutationFn: createBusWithSeats, onSuccess: () => qc.invalidateQueries({ queryKey: ['buses'] }) }); }
-export function useCreateDriver() { const qc = useQueryClient(); return useMutation({ mutationFn: createDriver, onSuccess: () => qc.invalidateQueries({ queryKey: ['drivers'] }) }); }
-export function useCreateRestStop() { const qc = useQueryClient(); return useMutation({ mutationFn: createRestStop, onSuccess: () => qc.invalidateQueries({ queryKey: ['rest-stops'] }) }); }
+export function useCreateBus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createBusWithSeats,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['buses'] });
+      qc.invalidateQueries({ queryKey: ['company-kpis'] });
+    },
+  });
+}
+export function useCreateDriver() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createDriver,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drivers'] });
+      qc.invalidateQueries({ queryKey: ['company-kpis'] });
+    },
+  });
+}
+export function useCreateRestStop() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createRestStop,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rest-stops'] }),
+  });
+}
 
-import { deleteBus } from '../services/fleet.service';
 export function useDeleteBus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteBus,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['buses'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['buses'] });
+      qc.invalidateQueries({ queryKey: ['company-kpis'] });
+    },
   });
 }
+

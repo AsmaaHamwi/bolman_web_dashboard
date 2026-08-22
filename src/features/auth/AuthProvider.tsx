@@ -154,9 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       loading,
       signOut: async () => {
-        localStorage.removeItem(CACHED_PROFILE_KEY);
+        try {
+          localStorage.removeItem(CACHED_PROFILE_KEY);
+          localStorage.removeItem('bolman_cached_company_id');
+        } catch {
+          // ignore
+        }
         setProfile(null);
-        await supabase.auth.signOut();
+        setSession(null);
+        await supabase.auth.signOut().catch((err) => console.error('signOut error:', err));
       },
       refreshProfile: async () => loadProfile(),
     }),

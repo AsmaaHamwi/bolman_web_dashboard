@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Bell, Building2, Bus, CalendarDays, ChartBar, ClipboardList, FileText, Home, Languages, LogOut, MapPin, Menu, Moon, QrCode, Settings, Shield, Sun, Users, WalletCards } from 'lucide-react';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { useCompanyStaffPermissions, useSystemStaffPermissions } from '../../hooks/usePermissions';
 import { useUiStore } from '../../stores/useUiStore';
 import { Button } from '../ui/Button';
+import { Modal } from '../ui/Modal';
 import {
   hasCompanyRoutePermission,
   hasSystemRoutePermission,
@@ -12,7 +14,7 @@ import {
 } from '../../config/permissions';
 import { cx } from '../../utils/format';
 import { useI18n } from '../../hooks/useI18n';
-import { translateRole } from '../../i18n';
+import { getWelcomeMessage } from '../../i18n';
 import { useCompanyContext, useCompanyProfile } from '../../hooks/useCompanyContext';
 
 const City = MapPin;
@@ -27,10 +29,20 @@ export function DashboardLayout() {
   const companyContext = useCompanyContext();
   const companyProfile = useCompanyProfile(companyContext.data);
 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  async function logout() {
-    await signOut();
-    navigate('/login');
+  async function handleConfirmLogout() {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+      setShowLogoutModal(false);
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   const canManageSystemStaff = profile?.role === 'super_admin' || !!systemPermissions.data?.can_manage_system_staff;
@@ -111,15 +123,8 @@ export function DashboardLayout() {
               </Button>
               <div>
                 <h1 className="text-lg font-black">
-                  {profile?.role === 'company_owner'
-                    ? messages.layout.welcomeOwner.replace('{companyName}', companyProfile.data?.name || '')
-                    : `${messages.layout.welcome} ${profile?.full_name || ''}`}
+                  {getWelcomeMessage(profile?.role, companyProfile.data?.name, locale)}
                 </h1>
-                {profile?.role !== 'company_owner' && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {profile?.role ? translateRole(profile.role, locale) : ''}
-                  </p>
-                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -130,7 +135,7 @@ export function DashboardLayout() {
               <Button variant="secondary" onClick={toggleTheme}>
                 {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
               </Button>
-              <Button variant="secondary" onClick={logout}>
+              <Button variant="secondary" onClick={() => setShowLogoutModal(true)}>
                 <LogOut size={18} />
                 {messages.layout.logout}
               </Button>
@@ -141,6 +146,36 @@ export function DashboardLayout() {
           <Outlet />
         </div>
       </main>
+
+      <Modal
+        open={showLogoutModal}
+        title={messages.layout.logoutConfirmTitle}
+        onClose={() => !isLoggingOut && setShowLogoutModal(false)}
+      >
+        <div className="space-y-6">
+          <p className="text-base text-slate-600 dark:text-slate-300">
+            {messages.layout.logoutConfirmMessage}
+          </p>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => setShowLogoutModal(false)}
+              disabled={isLoggingOut}
+            >
+              {messages.layout.cancel}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfirmLogout}
+              disabled={isLoggingOut}
+            >
+              <LogOut size={18} />
+              {messages.layout.logoutConfirmButton}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

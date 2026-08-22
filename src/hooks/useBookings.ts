@@ -18,4 +18,17 @@ export const useBookings = (
     placeholderData: (previous) => previous,
     ...(options?.live ? liveDashboardQueryOptions : {}),
   });
-export function useConfirmOfficeBooking() { const qc = useQueryClient(); return useMutation({ mutationFn: confirmOfficeCashBooking, onSuccess: () => qc.invalidateQueries({ queryKey: ['bookings'] }) }); }
+export function useConfirmOfficeBooking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: confirmOfficeCashBooking,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      qc.invalidateQueries({ queryKey: ['company-kpis'] });
+      qc.invalidateQueries({ queryKey: ['system-kpis'] });
+      qc.invalidateQueries({ queryKey: ['company-reports'] });
+      qc.invalidateQueries({ queryKey: ['seats'] });
+    },
+  });
+}
+
