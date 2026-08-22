@@ -10,10 +10,10 @@ export const liveDashboardQueryOptions = {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 0,
+      staleTime: 30_000,
       gcTime: 10 * 60_000,
       retry: 1,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     },
   },
 });

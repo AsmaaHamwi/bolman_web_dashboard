@@ -59,7 +59,8 @@ export async function getCompanyKpis(companyId?: string | null) {
     supabase
       .from('bookings')
       .select('count_passengers, price_total, rating_value, trip:trips!inner(company_id)')
-      .eq('trip.company_id', companyId),
+      .eq('trip.company_id', companyId)
+      .limit(2000),
   ]);
 
   const bookings = bookingsRes.data ?? [];
@@ -97,16 +98,33 @@ export async function getCompanyReportsData(
     };
   }
 
-  // 1. Fetch all company trips with origin, destination, departure datetime, and bus total seats
+  // Determine date filtering based on period
+  const now = new Date();
+  let filterCutoffDate: Date | null = null;
+  if (period === 'month') {
+    filterCutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+  } else if (period === 'quarter') {
+    filterCutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+  } else {
+    filterCutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  }
+
+  let bookingsQuery = supabase
+    .from('bookings')
+    .select('id, trip_id, count_passengers, price_total, created_at, payments(payment_method), trip:trips!inner(company_id)')
+    .eq('trip.company_id', companyId);
+
+  if (filterCutoffDate) {
+    bookingsQuery = bookingsQuery.gte('created_at', filterCutoffDate.toISOString());
+  }
+
+  // 1. Fetch company trips and filtered bookings
   const [tripsRes, bookingsRes] = await Promise.all([
     supabase
       .from('trips')
       .select('id, departure_datetime, origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name), bus:buses!trips_bus_id_fkey(total_seats)')
       .eq('company_id', companyId),
-    supabase
-      .from('bookings')
-      .select('id, trip_id, count_passengers, price_total, created_at, payments(payment_method), trip:trips!inner(company_id)')
-      .eq('trip.company_id', companyId),
+    bookingsQuery,
   ]);
 
   throwIfError(tripsRes.error);
@@ -125,17 +143,6 @@ export async function getCompanyReportsData(
     payments?: { payment_method: string }[];
   }[] = (bookingsRes.data as any) ?? [];
 
-
-  // Determine date filtering based on period
-  const now = new Date();
-  let filterCutoffDate: Date | null = null;
-  if (period === 'month') {
-    filterCutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-  } else if (period === 'quarter') {
-    filterCutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-  } else {
-    filterCutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-  }
 
   // Filter trips and bookings by date if matching, or keep full set if none fall in range
   const filteredBookings = allBookings.filter((b) => {

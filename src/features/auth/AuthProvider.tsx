@@ -111,16 +111,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       if (!mounted) return;
-      setSession(nextSession);
       if (nextSession?.user.id) {
+        setLoading(true);
         try {
           await loadProfile(nextSession.user.id);
         } catch (e) {
           console.error(e);
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setSession(nextSession);
+            setLoading(false);
+          }
         }
       } else {
+        setSession(null);
         setProfile(null);
         localStorage.removeItem(CACHED_PROFILE_KEY);
         if (mounted) setLoading(false);
