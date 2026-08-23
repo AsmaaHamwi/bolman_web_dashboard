@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Lock, Mail } from 'lucide-react';
+import { Lock, Mail, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { registerWebFcmToken } from '../../lib/firebase';
 import { useAuth } from './AuthProvider';
@@ -15,7 +15,7 @@ import { useI18n } from '../../hooks/useI18n';
 const marqueeCities = ['دمشق', 'حلب', 'حمص', 'حماة', 'اللاذقية', 'طرطوس', 'إدلب', 'الرقة', 'دير الزور', 'السويداء'];
 
 export function LoginPage() {
-  const { session, profile } = useAuth();
+  const { session, profile, loading: authLoading } = useAuth();
   const { theme, toggleTheme } = useUiStore();
   const { locale, messages, toggleLocale } = useI18n();
   const [email, setEmail] = useState('');
@@ -23,7 +23,19 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (session) return <Navigate to={getDefaultDashboardPath(profile)} replace />;
+  if (session) {
+    if (authLoading || !profile) {
+      return (
+        <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-bolman-dark text-bolman-purple">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="text-sm font-medium">{messages.common.loading}</span>
+          </div>
+        </div>
+      );
+    }
+    return <Navigate to={getDefaultDashboardPath(profile)} replace />;
+  }
 
   function getFormattedErrorMessage(rawMessage?: string): string {
     if (!rawMessage) return messages.auth.errorGeneric;
