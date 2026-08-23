@@ -8,6 +8,10 @@ interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  /** True while the profile row is being fetched, independent of the boot `loading` flag. */
+  profileLoading: boolean;
+  /** Set when the profile fetch failed; the dashboard renders empty without a profile. */
+  profileError: string | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -15,6 +19,28 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const CACHED_PROFILE_KEY = 'bolman_cached_profile';
+const PROFILE_FETCH_TIMEOUT_MS = 12_000;
+
+/**
+ * The Supabase client call has no built-in timeout, so a stalled/dropped connection (seen
+ * intermittently against this backend) leaves the awaiting promise pending forever. That used
+ * to freeze `loadProfile` mid-flight with no error and no way out other than a manual refresh.
+ */
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function hasStoredSupabaseSession(): boolean {
   if (typeof window === 'undefined') return false;
@@ -49,22 +75,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(cachedProfile);
   // Only show loading on boot if there is an actual token in localStorage to verify
   const [loading, setLoading] = useState(hasLocalToken && !cachedProfile);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const registeredUserIdRef = useRef<string | null>(null);
 
   async function loadProfile(userId?: string) {
     const id = userId || session?.user.id;
     if (!id) {
       setProfile(null);
+      setProfileError(null);
       localStorage.removeItem(CACHED_PROFILE_KEY);
       return;
     }
+    setProfileLoading(true);
+    setProfileError(null);
     try {
-      const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+      const { data, error } = await withTimeout(
+        supabase.from('users').select('*').eq('id', id).single(),
+        PROFILE_FETCH_TIMEOUT_MS,
+        'انتهت مهلة الاتصال بالخادم أثناء تحميل ملفك الشخصي. تحقّق من اتصال الإنترنت وحاول مجددًا.',
+      );
       if (error) {
+        // Without a profile the layout has no role to work with and renders an empty shell,
+        // so the failure has to reach the UI instead of only the console.
         console.error('loadProfile error:', error);
+        setProfileError(error.message);
         return;
       }
       setProfile(data as Profile);
+      setProfileError(null);
       try {
         localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(data));
       } catch {
@@ -72,6 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       console.error('loadProfile unexpected error:', e);
+      setProfileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProfileLoading(false);
     }
   }
 
@@ -153,6 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       profile,
       loading,
+      profileLoading,
+      profileError,
       signOut: async () => {
         try {
           localStorage.removeItem(CACHED_PROFILE_KEY);
@@ -161,12 +205,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // ignore
         }
         setProfile(null);
+        setProfileError(null);
         setSession(null);
         await supabase.auth.signOut().catch((err) => console.error('signOut error:', err));
       },
       refreshProfile: async () => loadProfile(),
     }),
-    [session, profile, loading],
+    [session, profile, loading, profileLoading, profileError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

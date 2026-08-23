@@ -68,15 +68,23 @@ serve(async (req: Request) => {
     }
 
     // ─── Insert notifications ───
-    const rows = userIds.map((user_id) => ({ user_id, title, message, type }));
-    if (rows.length > 0) {
-      const { error: insertError } = await admin.from('notifications').insert(rows);
+    const tripIdForPush = body.trip_id ?? null;
+    const rows = userIds.map((user_id) => ({
+      user_id,
+      title,
+      message,
+      type,
+      related_trip_id: tripIdForPush,
+    }));
+    // Chunked so a broadcast to thousands of passengers does not exceed the
+    // statement/payload limits of a single insert.
+    for (const batch of chunk(rows, 500)) {
+      const { error: insertError } = await admin.from('notifications').insert(batch);
       if (insertError) throw insertError;
     }
 
     // ─── Push notifications ───
-    const tripIdForPush = body.trip_id ?? null;
-    let pushResult = { sent: 0, failed: 0, warning: undefined as string | undefined };
+    let pushResult: PushResult = { sent: 0, failed: 0, devices: 0, warning: undefined };
     if (rows.length > 0) {
       try {
         pushResult = await sendFirebasePushNotifications(admin, userIds, { trip_id: tripIdForPush, title, message, type });
@@ -85,6 +93,7 @@ serve(async (req: Request) => {
         pushResult = {
           sent: 0,
           failed: userIds.length,
+          devices: 0,
           warning: `In-app saved, but Push (FCM) failed: ${fcmErr?.message || 'FCM error'}`,
         };
       }
@@ -209,58 +218,142 @@ type ServiceAccount = {
   private_key: string;
 };
 
+type PushResult = { sent: number; failed: number; devices: number; warning?: string };
+
+/** Must match FcmService._channel.id in the mobile app and the
+ *  default_notification_channel_id meta-data in AndroidManifest.xml. */
+const ANDROID_CHANNEL_ID = 'bolman_high_importance_channel';
+
 async function sendFirebasePushNotifications(
   admin: any,
   userIds: string[],
   payload: { trip_id: string | null; title: string; message: string; type: string },
-) {
+): Promise<PushResult> {
   const serviceAccount = getFirebaseServiceAccount();
+
+  // Collect device tokens first: if nobody has a registered device there is
+  // nothing to authenticate for, and the caller needs to be told rather than
+  // shown a bare success.
+  const tokens: { user_id: string; token: string }[] = [];
+  for (const batch of chunk(userIds, 200)) {
+    const { data, error } = await admin
+      .from('user_fcm_tokens')
+      .select('user_id, token')
+      .eq('is_active', true)
+      .in('user_id', batch);
+    if (error) throw error;
+    tokens.push(...(data ?? []));
+  }
+
+  if (tokens.length === 0) {
+    return {
+      sent: 0,
+      failed: 0,
+      devices: 0,
+      warning:
+        'In-app saved, but no push sent: none of the recipients has a registered device ' +
+        '(user_fcm_tokens is empty for them).',
+    };
+  }
+
   const accessToken = await createFirebaseAccessToken(serviceAccount);
   const projectId = serviceAccount.project_id;
 
-  const { data: tokens, error } = await admin
-    .from('user_fcm_tokens')
-    .select('user_id, token')
-    .eq('is_active', true)
-    .in('user_id', userIds);
-  if (error) throw error;
+  const fcmData: Record<string, string> = { type: payload.type };
+  if (payload.trip_id) fcmData.trip_id = payload.trip_id;
+  // Android tray notifications built by the native SDK need this to route the tap
+  // back into Dart.
+  fcmData.click_action = 'FLUTTER_NOTIFICATION_CLICK';
+
+  const messageFor = (token: string) => ({
+    message: {
+      token,
+      notification: { title: payload.title, body: payload.message },
+      data: fcmData,
+      android: {
+        priority: 'HIGH',
+        notification: {
+          channel_id: ANDROID_CHANNEL_ID,
+          sound: 'default',
+          default_vibrate_timings: true,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default', badge: 1 } },
+      },
+      webpush: {
+        notification: { title: payload.title, body: payload.message, icon: '/logo.svg' },
+        fcm_options: { link: '/' },
+      },
+    },
+  });
 
   let sent = 0;
   let failed = 0;
+  const staleTokens: string[] = [];
 
-  for (const entry of tokens ?? []) {
-    const fcmData: Record<string, string> = { type: payload.type };
-    if (payload.trip_id) fcmData.trip_id = payload.trip_id;
+  // Sent with bounded concurrency: one-at-a-time overruns the function timeout on
+  // a large broadcast, all-at-once trips FCM rate limits.
+  for (const batch of chunk(tokens, 25)) {
+    await Promise.all(
+      batch.map(async (entry) => {
+        try {
+          const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: JSON.stringify(messageFor(entry.token)),
+          });
 
-    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify({
-        message: {
-          token: entry.token,
-          notification: { title: payload.title, body: payload.message },
-          data: fcmData,
-        },
+          if (response.ok) {
+            sent += 1;
+            return;
+          }
+
+          failed += 1;
+          const text = await response.text();
+          console.error('FCM send failed', response.status, text);
+
+          // Only retire a token FCM actually rejected as unknown/invalid. A 400 can
+          // also mean a malformed message, and retiring the device for that would
+          // silently unsubscribe a healthy user.
+          if (
+            response.status === 404 ||
+            text.includes('UNREGISTERED') ||
+            text.includes('registration-token-not-registered') ||
+            text.includes('INVALID_ARGUMENT')
+          ) {
+            staleTokens.push(entry.token);
+          }
+        } catch (err) {
+          failed += 1;
+          console.error('FCM request error', err);
+        }
       }),
-    });
-
-    if (response.ok) {
-      sent += 1;
-      continue;
-    }
-
-    failed += 1;
-    const body = await response.text();
-    if (response.status === 400 || response.status === 404) {
-      await admin.from('user_fcm_tokens').update({ is_active: false }).eq('token', entry.token);
-    }
-    console.error('FCM send failed', response.status, body);
+    );
   }
 
-  return { sent, failed };
+  if (staleTokens.length > 0) {
+    for (const batch of chunk(staleTokens, 100)) {
+      await admin.from('user_fcm_tokens').update({ is_active: false }).in('token', batch);
+    }
+  }
+
+  const result: PushResult = { sent, failed, devices: tokens.length };
+  if (sent === 0 && failed > 0) {
+    result.warning = `In-app saved, but all ${failed} push attempt(s) failed. Check the function logs.`;
+  }
+  return result;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 function getFirebaseServiceAccount(): ServiceAccount {

@@ -5,6 +5,8 @@ export const ar = {
     loading: 'جاري التحميل...',
     noData: 'لا توجد بيانات',
     unexpectedError: 'حدث خطأ غير متوقع',
+    profileLoadFailed: 'تعذّر تحميل ملفك الشخصي، لذا لا يمكن عرض أقسام لوحة التحكم.',
+    retry: 'إعادة المحاولة',
     invalidEmail: 'أدخل بريداً إلكترونياً صحيحاً (مثل: name@company.com). احذف أي مسافات في البداية أو النهاية.',
     save: 'حفظ',
     create: 'إنشاء',
@@ -262,6 +264,7 @@ export const ar = {
       netProfit: 'صافي الأرباح',
       profitMargin: 'هامش الربح',
       monthlyAverage: 'متوسط الإيراد الشهري',
+      noCompanyLinked: 'لا توجد شركة مرتبطة بهذا الحساب، لذا لا يمكن عرض المؤشرات.',
     },
     reports: {
       title: 'التقارير المالية والتشغيلية',

@@ -1,6 +1,43 @@
 import { supabase } from '../lib/supabase';
 import { throwIfError } from './errors';
 
+/**
+ * Fetch bookings that belong to a set of company trips.
+ *
+ * Filtering through an embedded `trips!inner(company_id)` join makes PostgREST scan the
+ * whole bookings table under RLS and hits the statement timeout, so we resolve the trip
+ * ids first and query `trip_id in (...)` in chunks (keeps the request URL short too).
+ */
+async function fetchBookingsForTrips<T>(tripIds: string[], columns: string): Promise<T[]> {
+  if (tripIds.length === 0) return [];
+
+  const chunkSize = 200;
+  const chunks: string[][] = [];
+  for (let i = 0; i < tripIds.length; i += chunkSize) {
+    chunks.push(tripIds.slice(i, i + chunkSize));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) => supabase.from('bookings').select(columns).in('trip_id', chunk).limit(10000)),
+  );
+
+  const rows: T[] = [];
+  for (const res of results) {
+    throwIfError(res.error);
+    rows.push(...((res.data as any[]) ?? []));
+  }
+  return rows;
+}
+
+/** Set to false once we learn the aggregate RPC is not deployed on this database. */
+let companyKpisRpcAvailable = true;
+
+function isMissingFunctionError(error: unknown): boolean {
+  const code = (error as any)?.code;
+  const message = String((error as any)?.message ?? '');
+  return code === 'PGRST202' || message.includes('Could not find the function');
+}
+
 export type CompanyRouteReport = {
   route: string;
   trips: number;
@@ -53,16 +90,38 @@ export async function getCompanyKpis(companyId?: string | null) {
     return { trips: 0, bookings: 0, passengers: 0, revenue: 0, activeTrips: 0, ratedBookings: 0, avgRating: null };
   }
 
-  const [tripsRes, activeTripsRes, bookingsRes] = await Promise.all([
+  // Fast path: aggregate everything in one server-side call when the RPC is deployed.
+  if (companyKpisRpcAvailable) {
+    const { data, error } = await supabase.rpc('get_company_kpis', { p_company_id: companyId });
+    const row = (Array.isArray(data) ? data[0] : data) as any;
+    if (!error && row) {
+      return {
+        trips: Number(row.trips ?? 0),
+        activeTrips: Number(row.active_trips ?? 0),
+        bookings: Number(row.bookings ?? 0),
+        passengers: Number(row.passengers ?? 0),
+        revenue: Number(row.revenue ?? 0),
+        ratedBookings: Number(row.rated_bookings ?? 0),
+        avgRating: row.avg_rating == null ? null : Number(row.avg_rating),
+      };
+    }
+    if (isMissingFunctionError(error)) companyKpisRpcAvailable = false;
+    // Any other RPC failure falls through to the client-side aggregation below.
+  }
+
+  const [tripsRes, activeTripsRes, companyTripsRes] = await Promise.all([
     supabase.from('trips').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
     supabase.from('trips').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'active'),
-    supabase
-      .from('bookings')
-      .select('count_passengers, price_total, rating_value, trip:trips!inner(company_id)')
-      .eq('trip.company_id', companyId),
+    supabase.from('trips').select('id').eq('company_id', companyId),
   ]);
 
-  const bookings = bookingsRes.data ?? [];
+  throwIfError(companyTripsRes.error);
+
+  const bookings = await fetchBookingsForTrips<{
+    count_passengers: number;
+    price_total: number;
+    rating_value: number | null;
+  }>((companyTripsRes.data ?? []).map((t) => t.id), 'count_passengers,price_total,rating_value');
 
   const rated = bookings.filter((b) => b.rating_value != null);
   const avgRating = rated.length
@@ -98,33 +157,26 @@ export async function getCompanyReportsData(
   }
 
   // 1. Fetch all company trips with origin, destination, departure datetime, and bus total seats
-  const [tripsRes, bookingsRes] = await Promise.all([
-    supabase
-      .from('trips')
-      .select('id, departure_datetime, origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name), bus:buses!trips_bus_id_fkey(total_seats)')
-      .eq('company_id', companyId),
-    supabase
-      .from('bookings')
-      .select('id, trip_id, count_passengers, price_total, created_at, payments(payment_method), trip:trips!inner(company_id)')
-      .eq('trip.company_id', companyId),
-  ]);
+  const { data: trips, error: tripsError } = await supabase
+    .from('trips')
+    .select('id, departure_datetime, origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name), bus:buses!trips_bus_id_fkey(total_seats)')
+    .eq('company_id', companyId);
 
-  throwIfError(tripsRes.error);
-  throwIfError(bookingsRes.error);
+  throwIfError(tripsError);
 
-  const allTrips = tripsRes.data ?? [];
+  const allTrips = trips ?? [];
   const tripMap = new Map<string, (typeof allTrips)[0]>();
   allTrips.forEach((t) => tripMap.set(t.id, t));
 
-  const allBookings: {
+  // 2. Fetch bookings for these trips in chunks
+  const allBookings = await fetchBookingsForTrips<{
     id: string;
     trip_id: string;
     count_passengers: number;
     price_total: number;
     created_at: string;
     payments?: { payment_method: string }[];
-  }[] = (bookingsRes.data as any) ?? [];
-
+  }>(allTrips.map((t) => t.id), 'id, trip_id, count_passengers, price_total, created_at, payments(payment_method)');
 
   // Determine date filtering based on period
   const now = new Date();

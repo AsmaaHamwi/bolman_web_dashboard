@@ -5,6 +5,8 @@ export const en = {
     loading: 'Loading...',
     noData: 'No data available',
     unexpectedError: 'An unexpected error occurred',
+    profileLoadFailed: 'Your profile could not be loaded, so the dashboard sections cannot be shown.',
+    retry: 'Retry',
     invalidEmail: 'Enter a valid email address (example: name@company.com). Remove any spaces.',
     save: 'Save',
     create: 'Create',
@@ -262,6 +264,7 @@ export const en = {
       netProfit: 'Net Profit',
       profitMargin: 'Profit Margin',
       monthlyAverage: 'Monthly Avg Revenue',
+      noCompanyLinked: 'No company is linked to this account, so KPIs cannot be shown.',
     },
     reports: {
       title: 'Financial & Operational Reports',

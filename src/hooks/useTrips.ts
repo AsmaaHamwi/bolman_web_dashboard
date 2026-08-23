@@ -15,6 +15,7 @@ export function useTrips(
         filters: options?.filters,
       }),
     enabled: options?.enabled,
+    staleTime: 5 * 60_000,   // 5 minutes – avoid refetch on every page visit
     placeholderData: (previous) => previous,
     ...(options?.live ? liveDashboardQueryOptions : {}),
   });

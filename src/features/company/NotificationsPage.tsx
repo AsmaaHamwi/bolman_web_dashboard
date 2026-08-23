@@ -199,16 +199,16 @@ function TripPickerModal({
           ) : (
             Object.entries(groupedTrips).map(([routeKey, routeTrips]) => (
               <div key={routeKey} className="rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between rounded-2xl bg-bolman-purple/15 px-4 py-3 text-xs font-black text-bolman-purple dark:bg-bolman-purple/20">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={16} />
-                    <span className="text-sm">المسار: {routeKey}</span>
+                <div className="flex items-center justify-between rounded-2xl bg-bolman-purple px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-2 text-white">
+                    <MapPin size={18} className="shrink-0" />
+                    <span className="text-base font-black">المسار: {routeKey}</span>
                   </div>
-                  <span className="rounded-xl bg-white px-3 py-1 text-xs font-extrabold text-slate-800 shadow-sm dark:bg-bolman-cardDark dark:text-white">
+                  <span className="rounded-xl bg-white px-3 py-1 text-xs font-extrabold text-bolman-purple shadow-sm dark:bg-bolman-cardDark dark:text-white">
                     {routeTrips.length} رحلات متاحة
                   </span>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {routeTrips.map((trip: any) => {
                     const isSelected = selectedTripId === trip.id;
                     return (
@@ -216,37 +216,51 @@ function TripPickerModal({
                         key={trip.id}
                         type="button"
                         onClick={() => { prefetchTripPassengers(qc, trip.id); onSelect(trip.id); onClose(); }}
-                        className={`flex flex-col justify-between rounded-2xl p-4 text-start transition-all shadow-sm ${
+                        className={`flex flex-col gap-3 rounded-2xl p-5 text-start transition-all shadow-sm ${
                           isSelected
                             ? 'bg-bolman-purple/15 border-2 border-bolman-purple text-slate-900 dark:text-white ring-2 ring-bolman-purple/20'
-                            : 'bg-white hover:bg-slate-100 dark:bg-bolman-cardDark dark:hover:bg-bolman-surfaceDark border border-slate-200/80 dark:border-slate-800'
+                            : 'bg-white hover:bg-slate-100 dark:bg-bolman-cardDark dark:hover:bg-bolman-surfaceDark border-2 border-slate-200 dark:border-slate-800'
                         }`}
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-                            <span className="font-bold text-xs text-slate-900 dark:text-white">
-                              <span className="text-slate-500 font-normal">التاريخ: </span>
+                        {/* Date + selected badge */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
+                            <Calendar size={16} className="text-slate-400 shrink-0" />
+                            <span className="text-sm font-extrabold text-slate-900 dark:text-white">
                               {formatDate(trip.departure_datetime)}
                             </span>
-                            {isSelected && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-bolman-purple px-2.5 py-0.5 text-[10px] font-extrabold text-white">
-                                <Check size={12} /> محددة
-                              </span>
-                            )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs font-black text-bolman-purple">
-                            <Clock size={15} />
-                            <span>وقت الانطلاق: {formatTime(trip.departure_datetime)}</span>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-600 dark:text-slate-400">
-                            {trip.bus?.plate_number && (
-                              <span className="font-bold text-slate-800 dark:text-slate-200">
-                                <span className="text-slate-400 font-normal">الباص: </span>
-                                {trip.bus.plate_number}
-                              </span>
-                            )}
-                            <span className="font-mono text-slate-500">كود: #{trip.id.slice(0, 8)}</span>
-                          </div>
+                          {isSelected && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-bolman-purple px-2.5 py-1 text-[11px] font-extrabold text-white shrink-0">
+                              <Check size={13} /> محددة
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Departure time — the most important field, made prominent */}
+                        <div className="flex items-center justify-between gap-2 rounded-xl bg-bolman-purple px-3 py-2.5">
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-white/90">
+                            <Clock size={16} className="shrink-0" />
+                            وقت الانطلاق
+                          </span>
+                          <span className="text-base font-black text-white">
+                            {formatTime(trip.departure_datetime)}
+                          </span>
+                        </div>
+
+                        {/* Bus + code */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                          {trip.bus?.plate_number ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                              <Bus size={14} className="text-slate-400" />
+                              {trip.bus.plate_number}
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            #{trip.id.slice(0, 8)}
+                          </span>
                         </div>
                       </button>
                     );
@@ -730,6 +744,11 @@ export function NotificationsPage() {
 
       if (res?.push?.warning) {
         setDone(`تم إرسال وتخزين الإشعار بالتطبيق بنجاح. (تنبيه Push: ${res.push.warning})`);
+      } else if (res?.recipients > 0 && res?.push?.sent === 0) {
+        setDone(
+          'تم تخزين الإشعار في التطبيق، لكن لم يُرسل أي إشعار Push ' +
+            `(الأجهزة المسجّلة: ${res?.push?.devices ?? 0}).`,
+        );
       } else if (res?.recipients === 0) {
         setErrorMsg('لم يتم إرسال الإشعار لعدم وجود مستخدمين لديهم حساب مسجل بالتطبيق على هذه الرحلة.');
       } else {

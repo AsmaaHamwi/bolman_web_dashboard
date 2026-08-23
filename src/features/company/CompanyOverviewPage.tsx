@@ -12,7 +12,14 @@ import { formatMoney } from '../../utils/format';
 
 export function CompanyOverviewPage() {
   const navigate = useNavigate();
-  const { data: companyId } = useCompanyContext();
+  const company = useCompanyContext();
+  const companyId = company.data;
+  // A disabled query stays `pending` forever, so treat "pending but idle" as settled too —
+  // otherwise an account with no company keeps the page on a spinner with nothing to explain it.
+  const companySettled =
+    company.isSuccess || company.isError || (company.isPending && company.fetchStatus === 'idle');
+  const noCompany = companySettled && !companyId;
+
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['company-kpis', companyId],
     queryFn: () => getCompanyKpis(companyId),
@@ -20,7 +27,7 @@ export function CompanyOverviewPage() {
   });
   const { messages, locale } = useI18n();
 
-  const totalRev = data?.revenue ?? 109273204;
+  const totalRev = data?.revenue ?? 0;
 
   const monthsArabic = ['أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول', 'كانون الثاني', 'شباط'];
   const monthsEnglish = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'];
@@ -39,11 +46,19 @@ export function CompanyOverviewPage() {
   const totalProfit = chartData.reduce((acc, item) => acc + item.profit, 0);
   const avgMonthly = Math.round(totalRev / chartData.length);
 
-  const isLoading = isPending || !data;
+  // Never key the spinner off `!data`: a failed query leaves data undefined forever, which used to
+  // keep the whole page spinning instead of surfacing the error banner below.
+  const isLoading = isPending && !isError && !noCompany;
 
   return (
     <div className="space-y-6">
       <PageHeader title={messages.company.overview.title} subtitle={messages.company.overview.subtitle} />
+
+      {noCompany ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          {messages.company.overview.noCompanyLinked}
+        </div>
+      ) : null}
 
       {isError && error ? (
         <div className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">

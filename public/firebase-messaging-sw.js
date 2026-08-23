@@ -25,5 +25,12 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow('/'));
+  // Focus an already-open dashboard tab instead of stacking up new windows.
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      const existing = windowClients.find((client) => 'focus' in client);
+      if (existing) return existing.focus();
+      return clients.openWindow('/');
+    }),
+  );
 });
