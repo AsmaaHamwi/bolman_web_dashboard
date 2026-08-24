@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Bus,
@@ -513,29 +513,44 @@ function UserSearchPicker({
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const requestIdRef = useRef(0);
 
-  async function triggerSearch() {
-    if (!query.trim()) return;
+  async function runSearch(rawQuery: string) {
+    const trimmed = rawQuery.trim();
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setSearched(true);
     try {
+      let data: any[] = [];
       if (isSystemUser) {
-        const data = await searchUsers(query.trim());
-        setResults(data);
+        data = await searchUsers(trimmed);
       } else if (companyId) {
-        const data = await searchCompanyPassengers(companyId, query.trim());
-        setResults(data);
-      } else {
-        setResults([]);
+        data = await searchCompanyPassengers(companyId, trimmed);
       }
+      if (requestId === requestIdRef.current) setResults(data);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }
 
+  // Live search-as-you-type: debounce so we don't fire a query on every keystroke
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      requestIdRef.current++; // invalidate any in-flight request
+      setResults([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => runSearch(query), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, isSystemUser, companyId]);
+
   return (
     <div className="space-y-3">
-      {/* Search form */}
+      {/* Search input — searches live as the user types; button stays for a manual/instant search */}
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -546,7 +561,7 @@ function UserSearchPicker({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                triggerSearch();
+                runSearch(query);
               }
             }}
             placeholder={
@@ -554,12 +569,21 @@ function UserSearchPicker({
                 ? 'ابحث بالاسم أو رقم الهاتف...'
                 : 'ابحث بالاسم أو الهاتف ضمن مسافري ورواد الشركة...'
             }
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 ps-9 pe-3 text-sm text-slate-900 placeholder-slate-400 focus:border-bolman-purple focus:outline-none focus:ring-2 focus:ring-bolman-purple/10 dark:border-slate-700 dark:bg-bolman-surfaceDark dark:text-white"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 ps-9 pe-9 text-sm text-slate-900 placeholder-slate-400 focus:border-bolman-purple focus:outline-none focus:ring-2 focus:ring-bolman-purple/10 dark:border-slate-700 dark:bg-bolman-surfaceDark dark:text-white"
           />
+          {query && !loading && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute end-3 top-1/2 -translate-y-1/2 grid h-5 w-5 place-items-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 dark:bg-slate-700"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
         <Button
           type="button"
-          onClick={triggerSearch}
+          onClick={() => runSearch(query)}
           disabled={!query.trim() || loading}
           className="gap-1.5 px-4 py-2.5 text-xs"
         >
