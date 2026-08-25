@@ -1,9 +1,10 @@
 import { ButtonHTMLAttributes } from 'react';
+import { Loader2 } from 'lucide-react';
 import { cx } from '../../utils/format';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'mint';
 
-export function Button({ className, variant = 'primary', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+export function Button({ className, variant = 'primary', loading = false, disabled, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }) {
   const base = 'inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed';
   const variants: Record<Variant, string> = {
     primary: 'bg-bolman-purple text-white shadow-glow hover:bg-bolman-deep',
@@ -12,5 +13,10 @@ export function Button({ className, variant = 'primary', ...props }: ButtonHTMLA
     danger: 'bg-red-500 text-white hover:bg-red-600',
     mint: 'bg-bolman-mint text-bolman-deep hover:bg-violet-300 dark:text-white dark:hover:bg-bolman-purple/80'
   };
-  return <button className={cx(base, variants[variant], className)} {...props} />;
+  return (
+    <button className={cx(base, variants[variant], className)} disabled={disabled || loading} aria-busy={loading} {...props}>
+      {loading && <Loader2 size={16} className="animate-spin shrink-0" aria-hidden />}
+      {children}
+    </button>
+  );
 }

@@ -28,9 +28,15 @@ export function CompaniesPage() {
     },
   });
 
+  const [pendingStatusId, setPendingStatusId] = useState<string | null>(null);
+
   const update = useMutation({
     mutationFn: ({ id, patch }: any) => updateCompany(id, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+    // keep the spinner until the refetched list reflects the new status
+    onSettled: async () => {
+      await qc.invalidateQueries({ queryKey: ['companies'] });
+      setPendingStatusId(null);
+    },
   });
 
   return (
@@ -56,12 +62,15 @@ export function CompaniesPage() {
             <Td>
               <Button
                 variant="secondary"
-                onClick={() =>
+                loading={pendingStatusId === company.id}
+                disabled={pendingStatusId !== null}
+                onClick={() => {
+                  setPendingStatusId(company.id);
                   update.mutate({
                     id: company.id,
                     patch: { status: company.status === 'active' ? 'suspended' : 'active' },
-                  })
-                }
+                  });
+                }}
               >
                 {company.status === 'active' ? messages.common.disable : messages.common.enable}
               </Button>

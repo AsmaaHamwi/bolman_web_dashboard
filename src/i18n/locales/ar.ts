@@ -602,6 +602,16 @@ export const ar = {
       showingRange: 'عرض {from}–{to} من {total} عرض',
       specialOffer: 'عرض خاص',
       activateOffer: 'تفعيل عرض',
+      filters: {
+        title: 'تصفية الرحلات',
+        search: 'بحث',
+        searchPlaceholder: 'المسار (مدينة الانطلاق أو الوصول)',
+        departureDateFrom: 'تاريخ الرحلة من',
+        departureDateTo: 'تاريخ الرحلة إلى',
+        clear: 'مسح الفلاتر',
+        noResults: 'لا توجد رحلات مطابقة للفلاتر.',
+        noResultsHint: 'جرّب تغيير معايير البحث أو مسح الفلاتر.',
+      },
     },
     notifications: {
       title: 'الإشعارات',

@@ -615,6 +615,16 @@ export const en = {
       showingRange: 'Showing {from}–{to} of {total} offers',
       specialOffer: 'Special offer',
       activateOffer: 'Activate offer',
+      filters: {
+        title: 'Filter trips',
+        search: 'Search',
+        searchPlaceholder: 'Route (origin or destination city)',
+        departureDateFrom: 'Trip date from',
+        departureDateTo: 'Trip date to',
+        clear: 'Clear filters',
+        noResults: 'No trips match the filters.',
+        noResultsHint: 'Try changing your search or clearing the filters.',
+      },
     },
     notifications: {
       title: 'Notifications',
