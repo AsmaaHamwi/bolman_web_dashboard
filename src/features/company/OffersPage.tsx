@@ -11,7 +11,7 @@ import { FilterPanel, CompactFilterControl, compactFilterInputClass } from '../.
 import { Pagination } from '../../components/ui/Pagination';
 import { useI18n } from '../../hooks/useI18n';
 import { TRIPS_PAGE_SIZE, type TripsListFilters } from '../../services/trip.service';
-import { formatDate, formatMoney } from '../../utils/format';
+import { formatDate, formatMoney, getLocalDateInputValue } from '../../utils/format';
 
 const EMPTY_OFFERS_FILTERS: TripsListFilters = {
   search: '',
@@ -31,17 +31,28 @@ function hasActiveOffersFilters(filters: TripsListFilters) {
   return Object.values(filters).some((value) => String(value ?? '').trim() !== '');
 }
 
+// Offers are only actionable for trips that have not departed yet, so today is a hard floor.
+function latestDate(...dates: Array<string | undefined>) {
+  return dates.map((date) => (date ?? '').trim()).filter(Boolean).sort().pop() ?? '';
+}
+
 export function OffersPage() {
   const company = useCompanyContext();
   const companyId = company.data;
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<TripsListFilters>(EMPTY_OFFERS_FILTERS);
   const [queryFilters, setQueryFilters] = useState<TripsListFilters>(EMPTY_OFFERS_FILTERS);
-  const { data, isPending, isFetching } = useTrips(companyId, {
+  const today = getLocalDateInputValue();
+  const effectiveFilters: TripsListFilters = {
+    ...queryFilters,
+    departureDateFrom: latestDate(queryFilters.departureDateFrom, today),
+  };
+  const { data, isPending } = useTrips(companyId, {
     enabled: !!companyId,
     page,
     pageSize: TRIPS_PAGE_SIZE,
-    filters: queryFilters,
+    filters: effectiveFilters,
+    sort: 'departure_asc',
   });
 
   const trips = Array.isArray(data) ? data : (data?.rows ?? []);
@@ -56,7 +67,10 @@ export function OffersPage() {
   const copy = messages.company.offers.filters;
   const loading = company.isPending || isPending;
   const filtersPending = !offersFiltersEqual(filters, queryFilters);
-  const tableLoading = loading || isFetching || filtersPending;
+  // Row updates (activate/remove offer) refetch in the background via placeholderData,
+  // so they should not blank the table into the loading skeleton — only the initial
+  // load and an explicit filter change should.
+  const tableLoading = loading || filtersPending;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQueryFilters(filters), filters.search?.trim() ? 400 : 0);
@@ -112,6 +126,7 @@ export function OffersPage() {
           <DateInput
             className={compactFilterInputClass}
             value={filters.departureDateFrom ?? ''}
+            min={today}
             onChange={(val) => updateFilter('departureDateFrom', val)}
           />
         </CompactFilterControl>
@@ -120,7 +135,7 @@ export function OffersPage() {
           <DateInput
             className={compactFilterInputClass}
             value={filters.departureDateTo ?? ''}
-            min={filters.departureDateFrom || undefined}
+            min={latestDate(filters.departureDateFrom, today)}
             onChange={(val) => updateFilter('departureDateTo', val)}
           />
         </CompactFilterControl>
@@ -156,6 +171,7 @@ export function OffersPage() {
               <Td>
                 <Button
                   variant="secondary"
+                  loading={update.isPending && update.variables?.id === trip.id}
                   onClick={() =>
                     update.mutate({
                       id: trip.id,

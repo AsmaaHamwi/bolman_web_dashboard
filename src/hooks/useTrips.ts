@@ -1,18 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { liveDashboardQueryOptions } from '../lib/queryClient';
-import { createTripWithStops, getTripStops, listTrips, searchTrips, updateTrip, type TripsListFilters } from '../services/trip.service';
+import { createTripWithStops, getTripStops, listTrips, searchTrips, updateTrip, type TripsListFilters, type TripsListSort } from '../services/trip.service';
 
 export function useTrips(
   companyId?: string | null,
-  options?: { enabled?: boolean; filters?: TripsListFilters; live?: boolean; page?: number; pageSize?: number },
+  options?: { enabled?: boolean; filters?: TripsListFilters; live?: boolean; page?: number; pageSize?: number; sort?: TripsListSort },
 ) {
   return useQuery({
-    queryKey: ['trips', companyId, options?.page, options?.pageSize, options?.filters],
+    queryKey: ['trips', companyId, options?.page, options?.pageSize, options?.filters, options?.sort],
     queryFn: () =>
       listTrips(companyId, {
         page: options?.page,
         pageSize: options?.pageSize,
         filters: options?.filters,
+        sort: options?.sort,
       }),
     enabled: options?.enabled,
     staleTime: 5 * 60_000,   // 5 minutes – avoid refetch on every page visit

@@ -6,6 +6,7 @@ export const en = {
     noData: 'No data available',
     unexpectedError: 'An unexpected error occurred',
     profileLoadFailed: 'Your profile could not be loaded, so the dashboard sections cannot be shown.',
+    sessionCheckFailed: 'We could not verify your session because of a connection problem. You have not been signed out — please retry.',
     retry: 'Retry',
     invalidEmail: 'Enter a valid email address (example: name@company.com). Remove any spaces.',
     save: 'Save',

@@ -37,6 +37,8 @@ export type TripsListFilters = {
   offerFilter?: '' | 'yes' | 'no';
 };
 
+export type TripsListSort = 'departure_desc' | 'departure_asc';
+
 function tripDepartureDate(trip: { departure_datetime?: string | null }) {
   return trip.departure_datetime?.slice(0, 10) ?? '';
 }
@@ -53,11 +55,12 @@ function tripSearchHaystack(trip: any) {
     .toLowerCase();
 }
 
-export function sortTripsForList(trips: any[]) {
+export function sortTripsForList(trips: any[], sort: TripsListSort = 'departure_desc') {
+  const direction = sort === 'departure_asc' ? 1 : -1; // asc: earliest first, desc: newest first
   return [...trips].sort((left, right) => {
     const leftDate = new Date(left.departure_datetime).getTime();
     const rightDate = new Date(right.departure_datetime).getTime();
-    return rightDate - leftDate; // Newest first
+    return direction * (leftDate - rightDate);
   });
 }
 
@@ -133,6 +136,7 @@ export type ListTripsOptions = {
   page?: number;
   pageSize?: number;
   filters?: TripsListFilters;
+  sort?: TripsListSort;
 };
 
 export async function listTrips(
@@ -142,13 +146,15 @@ export async function listTrips(
   let filters: TripsListFilters | undefined;
   let page: number | undefined;
   let pageSize: number = TRIPS_PAGE_SIZE;
+  let sort: TripsListSort = 'departure_desc';
 
   if (optionsOrFilters) {
-    if ('page' in optionsOrFilters || 'pageSize' in optionsOrFilters || 'filters' in optionsOrFilters) {
+    if ('page' in optionsOrFilters || 'pageSize' in optionsOrFilters || 'filters' in optionsOrFilters || 'sort' in optionsOrFilters) {
       const opts = optionsOrFilters as ListTripsOptions;
       filters = opts.filters;
       page = opts.page;
       if (opts.pageSize) pageSize = opts.pageSize;
+      if (opts.sort) sort = opts.sort;
     } else {
       filters = optionsOrFilters as TripsListFilters;
     }
@@ -165,7 +171,7 @@ export async function listTrips(
       '*, company:companies(name), bus:buses(number_bus), driver:drivers(user:users(full_name)), origin:cities!trips_origin_city_id_fkey(name), destination:cities!trips_destination_city_id_fkey(name)',
       isPaged && !search ? { count: 'exact' } : undefined,
     )
-    .order('departure_datetime', { ascending: false });
+    .order('departure_datetime', { ascending: sort === 'departure_asc' });
 
   if (companyId) q = q.eq('company_id', companyId);
 
@@ -198,7 +204,7 @@ export async function listTrips(
   if (search) {
     const searchLower = search.toLowerCase();
     rows = rows.filter((trip) => tripSearchHaystack(trip).includes(searchLower));
-    rows = sortTripsForList(rows);
+    rows = sortTripsForList(rows, sort);
   }
 
   if (isPaged) {
@@ -215,7 +221,7 @@ export async function listTrips(
     } as TripsListResult;
   }
 
-  return sortTripsForList(rows);
+  return sortTripsForList(rows, sort);
 }
 
 export async function getTripStops(tripId: string) {
