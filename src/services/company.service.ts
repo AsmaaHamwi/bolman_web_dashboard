@@ -5,7 +5,13 @@ import { throwIfError } from './errors';
 import { createCompanyWithOwner as createCompanyWithOwnerViaEdge } from './auth.service';
 
 export async function listCompanies() {
-  const { data, error } = await supabase.from('companies').select('*, owner:users!companies_owner_user_id_fkey(full_name,email,phone)').order('created_at', { ascending: false });
+  // Seeded rows share the same created_at, so a tiebreaker is required — otherwise Postgres orders
+  // ties by physical row position, which an UPDATE (e.g. toggling status) can silently shuffle.
+  const { data, error } = await supabase
+    .from('companies')
+    .select('*, owner:users!companies_owner_user_id_fkey(full_name,email,phone)')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false });
   throwIfError(error); return data ?? [];
 }
 
