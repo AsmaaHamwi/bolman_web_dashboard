@@ -1,4 +1,6 @@
+import { getMessages } from '../i18n';
 import { supabase } from '../lib/supabase';
+import { useUiStore } from '../stores/useUiStore';
 import { throwIfError } from './errors';
 import { createCompanyWithOwner as createCompanyWithOwnerViaEdge } from './auth.service';
 
@@ -17,6 +19,22 @@ export async function createCompanyWithOwner(input: {
 export async function updateCompany(id: string, patch: any) {
   const { data, error } = await supabase.from('companies').update(patch).eq('id', id).select().single();
   throwIfError(error); return data;
+}
+
+/**
+ * Postgres blocks the delete with 23503 whenever another table (trips, bookings, buses, drivers, staff...)
+ * still references this company. Selecting the deleted row back also catches the RLS case where Postgrest
+ * silently deletes 0 rows and returns success instead of an error (no DELETE policy match for the caller).
+ */
+export async function deleteCompany(id: string) {
+  const { data, error } = await supabase.from('companies').delete().eq('id', id).select('id');
+  if (error?.code === '23503') {
+    throw new Error(getMessages(useUiStore.getState().locale).system.companies.cannotDeleteHasData);
+  }
+  throwIfError(error);
+  if (!data || data.length === 0) {
+    throw new Error(getMessages(useUiStore.getState().locale).system.companies.deleteNotPermitted);
+  }
 }
 
 export async function getMyCompanyId(userId: string, role: string) {

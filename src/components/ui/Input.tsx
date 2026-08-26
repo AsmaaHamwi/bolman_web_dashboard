@@ -50,6 +50,13 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return <textarea className={cx(inputClass, 'min-h-28', className)} {...props} />;
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="space-y-2 text-sm font-medium text-slate-700 dark:text-slate-200"><span>{label}</span>{children}</label>;
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="space-y-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+      <span>{label}</span>
+      {/* Rendered above the control so the clarification is read before the field is filled. */}
+      {hint && <span className="block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">{hint}</span>}
+      {children}
+    </label>
+  );
 }

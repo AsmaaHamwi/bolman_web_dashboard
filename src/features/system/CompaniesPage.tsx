@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Info, Plus, Trash } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { DataTable, Td } from '../../components/ui/Table';
@@ -8,8 +8,9 @@ import { StatusBadge } from '../../components/ui/Status';
 import { Modal } from '../../components/ui/Modal';
 import { Field, Input, PasswordInput } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
-import { createCompanyWithOwner, listCompanies, updateCompany } from '../../services/company.service';
+import { createCompanyWithOwner, deleteCompany, listCompanies, updateCompany } from '../../services/company.service';
 import { isValidName, isValidSyrianPhone, sanitizeName, sanitizePositiveDigits } from '../../utils/validation';
+import { formatDateTime } from '../../utils/format';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -23,10 +24,30 @@ type FieldKey = 'companyName' | 'companyPhone' | 'companyEmail' | 'ownerName' | 
 
 const emptyForm: FormState = {
   company: { name: '', phone: '', email: '' },
-  owner: { full_name: '', phone: '', email: '', password: '' },
+  owner: { full_name: '', phone: '', email: '', password: '12345678' },
 };
 
-const errorInputClass = 'border-red-400 focus:border-red-400 focus:ring-red-500/10 dark:border-red-500/60';
+const errorInputClass = '!border-red-400 focus:!border-red-400 focus:!ring-red-500/10 dark:!border-red-500/60';
+
+function DetailsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
+      <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">{title}</h3>
+      <dl className="grid gap-2.5">{children}</dl>
+    </section>
+  );
+}
+
+/** One label/value line; `value` falls back to `empty` when blank so rows never collapse. */
+function DetailRow({ label, value, empty }: { label: string; value?: React.ReactNode; empty: string }) {
+  const isBlank = value == null || value === '' || (typeof value === 'string' && !value.trim());
+  return (
+    <div className="grid gap-1 sm:grid-cols-[minmax(0,11rem)_1fr] sm:items-center sm:gap-4">
+      <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="break-all text-sm text-slate-800 dark:text-slate-100">{isBlank ? empty : value}</dd>
+    </div>
+  );
+}
 
 export function CompaniesPage() {
   const qc = useQueryClient();
@@ -63,6 +84,23 @@ export function CompaniesPage() {
     onSettled: async () => {
       await qc.invalidateQueries({ queryKey: ['companies'] });
       setPendingStatusId(null);
+    },
+  });
+
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<any | null>(null);
+  const dash = messages.system.companies.detailsEmpty;
+
+  const remove = useMutation({
+    mutationFn: deleteCompany,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      setDeleteTarget(null);
+      setDeleteError(null);
+    },
+    onError: (error) => {
+      setDeleteError(error instanceof Error ? error.message : messages.common.unexpectedError);
     },
   });
 
@@ -155,24 +193,49 @@ export function CompaniesPage() {
           <tr key={company.id}>
             <Td className="font-bold">{company.name}</Td>
             <Td>{company.phone}</Td>
-            <Td>{company.email}</Td>
+            {/* The owner's auth email — the one the company actually signs in with. The company's
+                own `email` column is contact-only and lives in the details modal instead. */}
+            <Td>{company.owner?.email || messages.system.companies.detailsEmpty}</Td>
             <Td>{company.owner?.full_name || company.owner_user_id}</Td>
             <Td><StatusBadge value={company.status} /></Td>
             <Td>
-              <Button
-                variant="secondary"
-                loading={pendingStatusId === company.id}
-                disabled={pendingStatusId !== null}
-                onClick={() => {
-                  setPendingStatusId(company.id);
-                  update.mutate({
-                    id: company.id,
-                    patch: { status: company.status === 'active' ? 'suspended' : 'active' },
-                  });
-                }}
-              >
-                {company.status === 'active' ? messages.common.disable : messages.common.enable}
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="secondary"
+                  loading={pendingStatusId === company.id}
+                  disabled={pendingStatusId !== null}
+                  onClick={() => {
+                    setPendingStatusId(company.id);
+                    update.mutate({
+                      id: company.id,
+                      patch: { status: company.status === 'active' ? 'suspended' : 'active' },
+                    });
+                  }}
+                >
+                  {company.status === 'active' ? messages.common.disable : messages.common.enable}
+                </Button>
+                <button
+                  type="button"
+                  title={messages.system.companies.detailsButton}
+                  aria-label={messages.system.companies.detailsButton}
+                  onClick={() => setDetailsTarget(company)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-bolman-purple hover:bg-bolman-purple/5 hover:text-bolman-purple dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-bolman-purple/50 dark:hover:bg-bolman-purple/10 transition-all shadow-sm"
+                >
+                  <Info size={17} />
+                </button>
+                <button
+                  type="button"
+                  title={messages.system.companies.deleteButton}
+                  aria-label={messages.system.companies.deleteButton}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteTarget({ id: company.id, name: company.name });
+                  }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-red-500 hover:bg-red-50 hover:text-red-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 transition-all shadow-sm"
+                >
+                  <Trash size={17} />
+                </button>
+              </div>
             </Td>
           </tr>
         ))}
@@ -188,7 +251,7 @@ export function CompaniesPage() {
             />
             {errors.companyName && <p className="text-xs text-red-500">{errors.companyName}</p>}
           </Field>
-          <Field label={messages.common.phone}>
+          <Field label={messages.system.companies.companyPhone}>
             <Input
               className={errors.companyPhone ? errorInputClass : undefined}
               inputMode="numeric"
@@ -198,9 +261,13 @@ export function CompaniesPage() {
             />
             {errors.companyPhone && <p className="text-xs text-red-500">{errors.companyPhone}</p>}
           </Field>
-          <Field label={messages.common.email}>
+          <Field
+            label={messages.system.companies.companyEmail}
+            hint={messages.system.companies.companyEmailHint}
+          >
             <Input
               className={errors.companyEmail ? errorInputClass : undefined}
+              autoComplete="off"
               type="email"
               value={form.company.email}
               aria-invalid={!!errors.companyEmail}
@@ -227,9 +294,13 @@ export function CompaniesPage() {
             />
             {errors.ownerPhone && <p className="text-xs text-red-500">{errors.ownerPhone}</p>}
           </Field>
-          <Field label={messages.system.companies.ownerEmail}>
+          <Field
+            label={messages.system.companies.ownerEmail}
+            hint={messages.system.companies.ownerEmailHint}
+          >
             <Input
               className={errors.ownerEmail ? errorInputClass : undefined}
+              autoComplete="off"
               type="email"
               value={form.owner.email}
               aria-invalid={!!errors.ownerEmail}
@@ -237,7 +308,10 @@ export function CompaniesPage() {
             />
             {errors.ownerEmail && <p className="text-xs text-red-500">{errors.ownerEmail}</p>}
           </Field>
-          <Field label={messages.system.companies.ownerPassword}>
+          <Field
+            label={messages.system.companies.ownerPassword}
+            hint={messages.system.companies.ownerPasswordHint}
+          >
             <PasswordInput
               className={errors.ownerPassword ? errorInputClass : undefined}
               value={form.owner.password}
@@ -256,6 +330,100 @@ export function CompaniesPage() {
           )}
           <Button type="submit" loading={create.isPending}>{messages.common.save}</Button>
         </form>
+      </Modal>
+      <Modal
+        open={!!detailsTarget}
+        onClose={() => setDetailsTarget(null)}
+        title={messages.system.companies.detailsTitle}
+      >
+        {detailsTarget && (
+          <div className="grid gap-5">
+            <DetailsSection title={messages.system.companies.detailsCompanySection}>
+              <DetailRow label={messages.system.companies.companyName} value={detailsTarget.name} empty={dash} />
+              <DetailRow label={messages.common.phone} value={detailsTarget.phone} empty={dash} />
+              <DetailRow
+                label={messages.system.companies.detailsContactEmail}
+                value={detailsTarget.email}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.common.status}
+                value={<StatusBadge value={detailsTarget.status} />}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.system.companies.detailsCreatedAt}
+                value={detailsTarget.created_at ? formatDateTime(detailsTarget.created_at) : null}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.system.companies.detailsCompanyId}
+                value={<span className="font-mono text-xs">{detailsTarget.id}</span>}
+                empty={dash}
+              />
+            </DetailsSection>
+            <DetailsSection title={messages.system.companies.detailsOwnerSection}>
+              <DetailRow
+                label={messages.system.companies.ownerName}
+                value={detailsTarget.owner?.full_name}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.system.companies.detailsLoginEmail}
+                value={detailsTarget.owner?.email}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.system.companies.ownerPhone}
+                value={detailsTarget.owner?.phone}
+                empty={dash}
+              />
+              <DetailRow
+                label={messages.system.companies.ownerIdLabel}
+                value={<span className="font-mono text-xs">{detailsTarget.owner_user_id}</span>}
+                empty={dash}
+              />
+            </DetailsSection>
+            <div className="flex justify-end">
+              <Button type="button" variant="secondary" onClick={() => setDetailsTarget(null)}>
+                {messages.common.close}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => {
+          if (remove.isPending) return;
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        title={messages.system.companies.deleteTitle}
+      >
+        <div className="grid gap-4">
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            {deleteTarget && messages.system.companies.deleteConfirm.replace('{{name}}', deleteTarget.name)}
+          </p>
+          {deleteError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+              {deleteError}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)} disabled={remove.isPending}>
+              {messages.common.close}
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => deleteTarget && remove.mutate(deleteTarget.id)}
+            >
+              {messages.system.companies.deleteButton}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

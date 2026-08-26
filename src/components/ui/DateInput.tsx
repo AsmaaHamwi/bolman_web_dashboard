@@ -11,6 +11,8 @@ type DateInputProps = {
   onChange: (value: string) => void; // yields yyyy-mm-dd or ""
   className?: string;
   min?: string; // yyyy-mm-dd
+  /** How many past years the year dropdown should reach back. Defaults to 0 (future-facing pickers). */
+  pastYears?: number;
 };
 
 function parseParts(value: string): { year: string; month: string; day: string } {
@@ -29,11 +31,11 @@ const selectClass =
 
 const optionClass = "text-slate-900 bg-white dark:bg-bolman-surfaceDark dark:text-white";
 
-export function DateInput({ value, onChange, className, min }: DateInputProps) {
+export function DateInput({ value, onChange, className, min, pastYears = 0 }: DateInputProps) {
   const { year, month, day } = parseParts(value);
   const minParts = parseParts(min ?? "");
   const currentYear = new Date().getFullYear();
-  const yearFrom = Number(minParts.year) || currentYear;
+  const yearFrom = Number(minParts.year) || currentYear - Math.max(0, pastYears);
   const yearTo = currentYear + 3;
   const dayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);

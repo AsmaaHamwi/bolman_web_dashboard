@@ -1,4 +1,5 @@
 import { ReactNode, TdHTMLAttributes } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 
 type DataTableProps = {
@@ -7,9 +8,12 @@ type DataTableProps = {
   empty?: boolean;
   loading?: boolean;
   loadingRows?: number;
+  /** Query failure, if any. Rendered instead of the empty state so a failed fetch never reads as "no data". */
+  error?: unknown;
+  onRetry?: () => void;
 };
 
-export function DataTable({ columns, children, empty, loading = false, loadingRows = 4 }: DataTableProps) {
+export function DataTable({ columns, children, empty, loading = false, loadingRows = 4, error, onRetry }: DataTableProps) {
   const { messages } = useI18n();
 
   return (
@@ -38,7 +42,26 @@ export function DataTable({ columns, children, empty, loading = false, loadingRo
           </tbody>
         </table>
         {!loading ? (
-          empty ? <div className="p-8 text-center text-slate-500 dark:text-slate-400">{messages.common.noData}</div> : null
+          error ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-center gap-3 p-8 text-center text-sm text-red-700 dark:text-red-200"
+            >
+              <AlertTriangle size={18} className="shrink-0" aria-hidden />
+              <span>{error instanceof Error ? error.message : messages.common.unexpectedError}</span>
+              {onRetry ? (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+                >
+                  {messages.common.retry}
+                </button>
+              ) : null}
+            </div>
+          ) : empty ? (
+            <div className="p-8 text-center text-slate-500 dark:text-slate-400">{messages.common.noData}</div>
+          ) : null
         ) : null}
       </div>
     </div>

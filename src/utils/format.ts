@@ -76,3 +76,22 @@ export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+
+/**
+ * Convert a `yyyy-mm-dd` picker value into the ISO instant that starts that day
+ * in the viewer's timezone. Needed for `timestamptz` filters: sending a bare
+ * `yyyy-mm-ddT00:00:00` makes Postgres resolve it in the server timezone, which
+ * shifts the boundary for anyone not on UTC.
+ */
+export function localDayStartIso(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** Companion to {@link localDayStartIso}: the last instant of that local day. */
+export function localDayEndIso(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T23:59:59.999`);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+}
