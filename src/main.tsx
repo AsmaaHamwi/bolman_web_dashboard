@@ -1,3 +1,6 @@
+// Imported first: it snapshots any password-recovery token in the URL before the Supabase
+// client (created further down the import graph) consumes and clears it.
+import './features/auth/recoveryLink';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';

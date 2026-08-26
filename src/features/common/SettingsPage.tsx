@@ -3,6 +3,7 @@ import { Card, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useUiStore } from '../../stores/useUiStore';
 import { useI18n } from '../../hooks/useI18n';
+import { ChangePasswordCard } from './ChangePasswordCard';
 
 export function SettingsPage() {
   const { theme, toggleTheme } = useUiStore();
@@ -22,6 +23,9 @@ export function SettingsPage() {
           <p className="my-3 text-sm text-slate-500 dark:text-slate-400">{messages.settings.themeDescription}</p>
           <Button onClick={toggleTheme}>{theme === 'dark' ? messages.settings.enableLightTheme : messages.settings.enableDarkTheme}</Button>
         </Card>
+        <div className="md:col-span-2">
+          <ChangePasswordCard />
+        </div>
       </div>
     </div>
   );

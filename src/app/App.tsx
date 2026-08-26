@@ -1,8 +1,11 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { initUiPreferences } from '../stores/useUiStore';
 import { AuthProvider, useAuth } from '../features/auth/AuthProvider';
 import { LoginPage } from '../features/auth/LoginPage';
+import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
+import { isRecoveryRedirectPending } from '../features/auth/recoveryLink';
 import { ProtectedRoute } from './ProtectedRoute';
 import { PermissionRoute } from './PermissionRoute';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
@@ -31,6 +34,19 @@ import { getDefaultDashboardPath } from '../config/permissions';
 import { CompanyTripDetailsPage } from '../features/company/CompanyTripDetailsPage';
 import { CompanyBookingDetailsPage } from '../features/company/CompanyBookingDetailsPage';
 
+/**
+ * The recovery email can only redirect to a URL on the project's allow-list, which is usually the
+ * site root. Landing there with a recovery session would send the user straight into the dashboard
+ * with the old password still in force, so route them to the page that can change it.
+ */
+function RecoveryLinkGate({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  if (isRecoveryRedirectPending() && pathname !== '/reset-password') {
+    return <Navigate to="/reset-password" replace />;
+  }
+  return <>{children}</>;
+}
+
 function RoleHomeRedirect() {
   const { profile } = useAuth();
   return <Navigate to={getDefaultDashboardPath(profile)} replace />;
@@ -42,8 +58,11 @@ export function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AuthProvider>
+        <RecoveryLinkGate>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
             <Route index element={<RoleHomeRedirect />} />
             <Route path="dashboard" element={<RoleHomeRedirect />} />
@@ -74,6 +93,7 @@ export function App() {
             <Route path="company/reports" element={<ProtectedRoute roles={['company_owner', 'company_staff']}><PermissionRoute permission="view_reports"><CompanyReportsPage /></PermissionRoute></ProtectedRoute>} />
           </Route>
         </Routes>
+        </RecoveryLinkGate>
       </AuthProvider>
     </BrowserRouter>
   );

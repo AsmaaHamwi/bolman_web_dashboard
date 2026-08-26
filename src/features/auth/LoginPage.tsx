@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Lock, Mail, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { registerWebFcmToken } from '../../lib/firebase';
@@ -7,7 +7,7 @@ import { useAuth } from './AuthProvider';
 import { HeroBanner } from '../../components/animations/HeroBanner';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Field, Input } from '../../components/ui/Input';
+import { Field, Input, PasswordInput } from '../../components/ui/Input';
 import { useUiStore } from '../../stores/useUiStore';
 import { getDefaultDashboardPath } from '../../config/permissions';
 import { useI18n } from '../../hooks/useI18n';
@@ -126,13 +126,26 @@ export function LoginPage() {
               <Field label={messages.auth.passwordLabel}>
                 <div className="relative">
                   <Lock className="absolute start-3 top-3.5 text-slate-400" size={18} />
-                  <Input className="ps-10" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <PasswordInput
+                    className="ps-10"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    showLabel={messages.common.showPassword}
+                    hideLabel={messages.common.hidePassword}
+                  />
                 </div>
               </Field>
               {error && <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
               <Button className="w-full transition-transform active:scale-[0.98]" disabled={loading}>
                 {loading ? messages.auth.loggingIn : messages.auth.loginButton}
               </Button>
+              <Link
+                to="/forgot-password"
+                className="block text-center text-sm font-semibold text-bolman-purple hover:underline dark:text-violet-300"
+              >
+                {messages.auth.forgotPasswordLink}
+              </Link>
             </form>
           </Card>
         </div>
