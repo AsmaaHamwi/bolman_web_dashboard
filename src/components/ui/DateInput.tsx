@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cx } from "../../utils/format";
 
 const MONTHS_AR = [
@@ -32,7 +32,13 @@ const selectClass =
 const optionClass = "text-slate-900 bg-white dark:bg-bolman-surfaceDark dark:text-white";
 
 export function DateInput({ value, onChange, className, min, pastYears = 0 }: DateInputProps) {
-  const { year, month, day } = parseParts(value);
+  const [parts, setParts] = useState(() => parseParts(value));
+
+  useEffect(() => {
+    setParts(parseParts(value));
+  }, [value]);
+
+  const { year, month, day } = parts;
   const minParts = parseParts(min ?? "");
   const currentYear = new Date().getFullYear();
   const yearFrom = Number(minParts.year) || currentYear - Math.max(0, pastYears);
@@ -43,11 +49,8 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
   const yearRef = useRef<HTMLInputElement>(null);
 
   function update(field: "year" | "month" | "day", newVal: string) {
-    const next = {
-      year: field === "year" ? newVal : year,
-      month: field === "month" ? newVal : month,
-      day: field === "day" ? newVal : day,
-    };
+    const next = { ...parts, [field]: newVal };
+    setParts(next);
     onChange(buildValue(next.year, next.month, next.day));
   }
 

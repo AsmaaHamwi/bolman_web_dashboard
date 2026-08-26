@@ -30,6 +30,7 @@ export function CompanyBookingDetailsPage() {
   const [openCancel, setOpenCancel] = useState(false);
   const [openModify, setOpenModify] = useState(false);
   const [openQr, setOpenQr] = useState(false);
+  const [rowQrToken, setRowQrToken] = useState<string | null>(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -261,7 +262,7 @@ export function CompanyBookingDetailsPage() {
         <CardTitle>{bd.ticketsSection}</CardTitle>
         <div className="mt-4">
           <DataTable
-            columns={[bd.tableCode, bd.tableType, bd.tableTicketStatus]}
+            columns={[bd.tableCode, bd.tableType, bd.tableTicketStatus, bd.tableQr]}
             loading={false}
             empty={!booking.tickets?.length}
           >
@@ -270,6 +271,20 @@ export function CompanyBookingDetailsPage() {
                 <Td className="font-mono text-xs">{ticket.ticket_code}</Td>
                 <Td>{ticket.ticket_type === 'group' ? messages.ticketMode.qrGroup : messages.ticketMode.qrIndividual}</Td>
                 <Td><StatusBadge value={ticket.status} /></Td>
+                <Td>
+                  {ticket.qr_token || ticket.ticket_code ? (
+                    <button
+                      type="button"
+                      title={messages.company.bookings.actionQr}
+                      onClick={() => setRowQrToken(String(ticket.qr_token || ticket.ticket_code))}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 transition-all shadow-sm"
+                    >
+                      <QrCode size={17} />
+                    </button>
+                  ) : (
+                    '-'
+                  )}
+                </Td>
               </tr>
             ))}
           </DataTable>
@@ -377,6 +392,26 @@ export function CompanyBookingDetailsPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal open={!!rowQrToken} onClose={() => setRowQrToken(null)} title={messages.company.bookings.qrModalTitle}>
+        {rowQrToken ? (
+          <div className="grid gap-4">
+            <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
+                <QRCodeSVG value={rowQrToken} size={200} level="M" />
+                <span className="max-w-[220px] truncate font-mono text-xs font-bold text-slate-700 dark:text-slate-200" title={rowQrToken}>
+                  {rowQrToken}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="secondary" type="button" onClick={() => setRowQrToken(null)}>
+                {messages.common.close}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

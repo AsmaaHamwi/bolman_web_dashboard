@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { throwIfError } from './errors';
 import type { BookingPassengerInput, TicketType } from '../types/domain';
+import { getLocalDateInputValue } from '../utils/format';
 
 /** Lightweight list payload — avoids timeout with dense seed data. */
 const BOOKING_LIST_SELECT = `
@@ -74,16 +75,19 @@ function applyBookingListFilters<T extends { eq: Function; gte: Function; lte: F
   const ticketMode = normalizeFilterValue(filters?.ticketMode);
   if (ticketMode) q = q.eq('ticket_mode', ticketMode) as T;
 
-  const tripDateFrom = normalizeFilterValue(filters?.tripDateFrom);
+  const tripDateTo = normalizeFilterValue(filters?.tripDateTo);
+  const search = normalizeFilterValue(filters?.search);
+  const tripDateFromRaw = normalizeFilterValue(filters?.tripDateFrom);
+  // Hide bookings for past trips by default; once the user searches or sets an explicit date range, show everything they asked for.
+  const tripDateFrom = tripDateFromRaw
+    || (!search && !tripDateTo ? getLocalDateInputValue(new Date()) : null);
   if (tripDateFrom) q = q.gte('trip.departure_datetime', `${tripDateFrom}T00:00:00`) as T;
 
-  const tripDateTo = normalizeFilterValue(filters?.tripDateTo);
   if (tripDateTo) q = q.lte('trip.departure_datetime', `${tripDateTo}T23:59:59.999`) as T;
 
   const paymentMethod = normalizeFilterValue(filters?.paymentMethod);
   if (paymentMethod) q = q.filter('payments.payment_method', 'eq', paymentMethod) as T;
 
-  const search = normalizeFilterValue(filters?.search);
   if (search) q = q.or(`id.ilike.%${search}%`) as T;
 
   return q;
@@ -102,8 +106,8 @@ export async function listBookings(
   let listQuery = supabase
     .from('bookings')
     .select(`${BOOKING_LIST_SELECT}, ${tripEmbed}`, { count: 'exact' })
+    .order('departure_datetime', { foreignTable: 'trip', ascending: true })
     .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
     .range(offset, offset + pageSize - 1);
   listQuery = applyBookingListFilters(listQuery, companyId, filters);
 

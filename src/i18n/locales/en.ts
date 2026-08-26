@@ -491,7 +491,7 @@ export const en = {
       reservedSeatsLabel: 'Reserved seats (full route)',
       reservedSeatsHint: 'Only shown when different from passenger count.',
       availableSeatsLabel: 'Available seats',
-      manifestColumns: ['Passenger', 'Phone', 'National ID', 'Seat', 'Ticket status', 'Boarded at'],
+      manifestColumns: ['Passenger', 'Phone', 'National ID', 'Seat', 'Ticket status', 'Boarded at', 'QR'],
     },
     bookings: {
       title: 'Booking Management',
@@ -565,6 +565,7 @@ export const en = {
       tableCode: 'Code',
       tableType: 'Type',
       tableTicketStatus: 'Ticket status',
+      tableQr: 'QR',
       cancelModalTitle: 'Cancel booking',
       cancelModalBody:
         'This calls cancel_booking_with_refund. Wallet bookings are refunded automatically; office cash bookings are marked refunded.',

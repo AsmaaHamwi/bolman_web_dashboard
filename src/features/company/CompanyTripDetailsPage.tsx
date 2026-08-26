@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
+import { QrCode } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card, CardTitle } from '../../components/ui/Card';
@@ -51,6 +53,7 @@ export function CompanyTripDetailsPage() {
   const [form, setForm] = useState<any | null>(null);
   const [stopsForm, setStopsForm] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
   const hasBookings = (bookingCountQuery.data ?? 0) > 0;
   const busFilterCity = openEdit && form ? form.origin_city_id : tripQuery.data?.origin_city_id;
   const { data: buses = [] } = useBuses(companyId, {
@@ -358,11 +361,45 @@ export function CompanyTripDetailsPage() {
                 <Td>{row.seat_number ?? '-'}</Td>
                 <Td><StatusBadge value={row.ticket_status} /></Td>
                 <Td>{row.boarded_at ? formatDateTime(row.boarded_at) : '-'}</Td>
+                <Td>
+                  {row.qr_token ? (
+                    <button
+                      type="button"
+                      title={messages.company.bookings.actionQr}
+                      onClick={() => setQrToken(row.qr_token)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-slate-200 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 transition-all shadow-sm"
+                    >
+                      <QrCode size={17} />
+                    </button>
+                  ) : (
+                    '-'
+                  )}
+                </Td>
               </tr>
             ))}
           </DataTable>
         </div>
       </Card>
+
+      <Modal open={!!qrToken} onClose={() => setQrToken(null)} title={messages.company.bookings.qrModalTitle}>
+        {qrToken ? (
+          <div className="grid gap-4">
+            <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
+                <QRCodeSVG value={qrToken} size={200} level="M" />
+                <span className="max-w-[220px] truncate font-mono text-xs text-slate-500" title={qrToken}>
+                  {qrToken}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="secondary" type="button" onClick={() => setQrToken(null)}>
+                {messages.common.close}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal open={openEdit} onClose={() => !saveMutation.isPending && setOpenEdit(false)} title={messages.company.trips.editTrip}>
         {form ? (

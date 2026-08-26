@@ -15,6 +15,7 @@ export type TripManifestRow = {
   seat_number: number | null;
   ticket_status: string;
   boarded_at: string | null;
+  qr_token: string | null;
 };
 
 export type TripSeatSummary = {
@@ -55,7 +56,7 @@ function tripSearchHaystack(trip: any) {
     .toLowerCase();
 }
 
-export function sortTripsForList(trips: any[], sort: TripsListSort = 'departure_desc') {
+export function sortTripsForList(trips: any[], sort: TripsListSort = 'departure_asc') {
   const direction = sort === 'departure_asc' ? 1 : -1; // asc: earliest first, desc: newest first
   return [...trips].sort((left, right) => {
     const leftDate = new Date(left.departure_datetime).getTime();
@@ -146,7 +147,7 @@ export async function listTrips(
   let filters: TripsListFilters | undefined;
   let page: number | undefined;
   let pageSize: number = TRIPS_PAGE_SIZE;
-  let sort: TripsListSort = 'departure_desc';
+  let sort: TripsListSort = 'departure_asc';
 
   if (optionsOrFilters) {
     if ('page' in optionsOrFilters || 'pageSize' in optionsOrFilters || 'filters' in optionsOrFilters || 'sort' in optionsOrFilters) {
@@ -184,10 +185,13 @@ export async function listTrips(
   const destinationCityId = filters?.destinationCityId?.trim();
   if (destinationCityId) q = q.eq('destination_city_id', destinationCityId);
 
-  const departureDateFrom = filters?.departureDateFrom?.trim();
+  const departureDateTo = filters?.departureDateTo?.trim();
+  const departureDateFromRaw = filters?.departureDateFrom?.trim();
+  // Hide past trips by default; once the user searches or sets an explicit date range, show everything they asked for.
+  const departureDateFrom = departureDateFromRaw
+    || (!search && !departureDateTo ? getLocalDateInputValue(new Date()) : undefined);
   if (departureDateFrom) q = q.gte('departure_datetime', `${departureDateFrom}T00:00:00`);
 
-  const departureDateTo = filters?.departureDateTo?.trim();
   if (departureDateTo) q = q.lte('departure_datetime', `${departureDateTo}T23:59:59.999`);
 
   if (filters?.offerFilter === 'yes') q = q.eq('offer_is', true);
@@ -356,7 +360,7 @@ export async function getTripManifest(tripId: string): Promise<TripManifestRow[]
       ticket_mode,
       booking_passengers(id, full_name, phone, national_id, created_at),
       booking_seats(id, bus_seat_id, created_at, seat:bus_seats(seat_number)),
-      tickets(id, booking_passenger_id, status, boarded_at, ticket_type)
+      tickets(id, booking_passenger_id, status, boarded_at, ticket_type, qr_token)
     `)
     .eq('trip_id', tripId)
     .in('booking_status', [...ACTIVE_BOOKING_STATUSES])
@@ -401,6 +405,7 @@ export async function getTripManifest(tripId: string): Promise<TripManifestRow[]
         seat_number: seat?.seat?.seat_number ?? null,
         ticket_status: ticket?.status ?? 'issued',
         boarded_at: ticket?.boarded_at ?? null,
+        qr_token: ticket?.qr_token ?? null,
       });
     });
   }

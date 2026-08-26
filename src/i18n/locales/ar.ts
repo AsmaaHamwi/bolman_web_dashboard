@@ -491,7 +491,7 @@ export const ar = {
       arrivalDepartureLine: 'الوصول | المغادرة',
       completeTrip: 'إنهاء الرحلة',
       bookOnThisTrip: 'حجز على هذه الرحلة',
-      manifestColumns: ['الراكب', 'الهاتف', 'الرقم الوطني', 'المقعد', 'حالة التذكرة', 'وقت الصعود'],
+      manifestColumns: ['الراكب', 'الهاتف', 'الرقم الوطني', 'المقعد', 'حالة التذكرة', 'وقت الصعود', 'QR'],
     },
     bookings: {
       title: 'إدارة الحجوزات',
@@ -552,6 +552,7 @@ export const ar = {
       tableCode: 'الرمز',
       tableType: 'النوع',
       tableTicketStatus: 'حالة التذكرة',
+      tableQr: 'QR',
       cancelModalTitle: 'إلغاء الحجز',
       cancelModalBody:
         'سيتم استدعاء دالة إلغاء الحجز مع الاسترداد. حجوزات المحفظة تُسترد تلقائيًا، وحجوزات الكاش المكتبية تُعلّم كمستردة.',

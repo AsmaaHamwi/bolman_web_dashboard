@@ -16,6 +16,7 @@ import { getBookingDetails } from '../../services/booking.service';
 import { BookingsFilterBar, EMPTY_BOOKINGS_FILTERS } from './BookingsFilterBar';
 import type { BookingsListFilters } from '../../services/booking.service';
 import { formatDateTime, formatMoney } from '../../utils/format';
+import { bookerDisplay } from '../../utils/bookingDisplay';
 
 function seatNumbersFromBooking(row: any): string {
   const seats = row.booking_seats ?? [];
@@ -23,10 +24,6 @@ function seatNumbersFromBooking(row: any): string {
     .map((bs: any) => bs.seat?.seat_number ?? bs.bus_seats?.seat_number)
     .filter((n: any) => n != null && n !== '')
     .join(', ');
-}
-
-function bookerDisplay(row: any, officeLabel: string) {
-  return row.booker?.full_name?.trim() || row.creator?.full_name?.trim() || officeLabel;
 }
 
 function paymentMethodFirst(row: any): string {
