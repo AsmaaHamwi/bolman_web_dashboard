@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Bus,
   Clock,
@@ -64,6 +64,7 @@ export function ManualBookingPage() {
   const { data: companyId } = useCompanyContext();
   const { messages, isArabic } = useI18n();
   const navigate = useNavigate();
+  const [urlSearchParams, setUrlSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   const { data: cities = [] } = useCities();
@@ -101,6 +102,7 @@ export function ManualBookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSearchingNearby, setIsSearchingNearby] = useState(false);
   const [nearbySearchNotice, setNearbySearchNotice] = useState<string | null>(null);
+  const [pendingTripId, setPendingTripId] = useState<string | null>(null);
 
   const searchParams = useMemo(() => {
     if (!originCityId || !destinationCityId || !travelDate || originCityId === destinationCityId) {
@@ -373,6 +375,41 @@ export function ManualBookingPage() {
     setSelectedTrip(trip);
     setSelectedSeats([]);
   };
+
+  // Pre-fill the search from a "Book on this trip" link (trip details page)
+  useEffect(() => {
+    const tripIdParam = urlSearchParams.get('trip_id');
+    const originParam = urlSearchParams.get('origin_city_id');
+    const destinationParam = urlSearchParams.get('destination_city_id');
+    const travelDateParam = urlSearchParams.get('travel_date');
+
+    if (!tripIdParam && !originParam && !destinationParam && !travelDateParam) {
+      return;
+    }
+
+    if (originParam) setOriginCityId(originParam);
+    if (destinationParam) setDestinationCityId(destinationParam);
+    if (travelDateParam) setTravelDate(travelDateParam);
+    if (tripIdParam) {
+      setSelectedTrip(null);
+      setSelectedSeats([]);
+      setPendingTripId(tripIdParam);
+    }
+
+    setUrlSearchParams({}, { replace: true });
+    // Only meant to run once, on arrival with query params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Once the matching trip shows up in the search results, auto-select it.
+  useEffect(() => {
+    if (!pendingTripId) return;
+    const match = filteredTrips.find((trip) => trip.trip_id === pendingTripId);
+    if (match) {
+      handleSelectTrip(match);
+      setPendingTripId(null);
+    }
+  }, [pendingTripId, filteredTrips]);
 
   return (
     <div className="w-full space-y-6">

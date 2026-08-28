@@ -1,10 +1,16 @@
 import { cx } from '../../utils/format';
+import { DateInput } from './DateInput';
+import { TimeInput } from './TimeInput';
 
 interface DateTimePickerProps {
   value?: string | null;
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  /** Lower bound as a "YYYY-MM-DDTHH:mm" datetime string. */
+  min?: string | null;
+  /** Upper bound as a "YYYY-MM-DDTHH:mm" datetime string. */
+  max?: string | null;
 }
 
 export function DateTimePicker({
@@ -12,13 +18,20 @@ export function DateTimePicker({
   onChange,
   disabled = false,
   className,
+  min,
+  max,
 }: DateTimePickerProps) {
   const strValue = value || '';
   const [datePart = '', rawTime = ''] = strValue.split('T');
   const timePart = rawTime ? rawTime.slice(0, 5) : '';
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value;
+  const [minDate = '', minTime = ''] = (min || '').split('T');
+  const [maxDate = '', maxTime = ''] = (max || '').split('T');
+
+  const timeMin = minDate && datePart === minDate ? minTime : undefined;
+  const timeMax = maxDate && datePart === maxDate ? maxTime : undefined;
+
+  const handleDateChange = (newDate: string) => {
     if (!newDate) {
       onChange('');
       return;
@@ -27,27 +40,32 @@ export function DateTimePicker({
     onChange(`${newDate}T${t}`);
   };
 
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = e.target.value;
-    const d = datePart || new Date().toISOString().slice(0, 10);
-    onChange(`${d}T${newTime || '00:00'}`);
+  const handleTimeChange = (newTime: string) => {
+    if (!newTime) {
+      onChange(datePart ? `${datePart}T00:00` : '');
+      return;
+    }
+    const d = datePart || minDate || new Date().toISOString().slice(0, 10);
+    onChange(`${d}T${newTime}`);
   };
 
   return (
     <div className={cx('grid grid-cols-1 sm:grid-cols-2 gap-2', className)}>
-      <input
-        type="date"
+      <DateInput
         value={datePart}
         onChange={handleDateChange}
+        min={minDate || undefined}
+        max={maxDate || undefined}
         disabled={disabled}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-bolman-purple focus:ring-4 focus:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-white disabled:opacity-50"
+        className="px-3 py-2.5"
       />
-      <input
-        type="time"
+      <TimeInput
         value={timePart}
         onChange={handleTimeChange}
+        min={timeMin}
+        max={timeMax}
         disabled={disabled}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-bolman-purple focus:ring-4 focus:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark dark:text-white disabled:opacity-50"
+        className="px-3 py-2.5"
       />
     </div>
   );

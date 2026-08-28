@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { TicketQrCode } from '../../components/booking/TicketQrCode';
 import { QrCode } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -26,8 +26,8 @@ import {
   updateTripOfferSettings,
   updateTripWithStops,
 } from '../../services/trip.service';
-import { formatDateTime, formatMoney, getLocalDateInputValue } from '../../utils/format';
-import { buildTripStopsPayload, getFullRouteSegmentStopIds, getTripStopLabel, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
+import { formatDateTime, formatMoney, getLocalDateInputValue, toDateTimeInputValue } from '../../utils/format';
+import { MAX_TRIP_DURATION_DAYS, buildTripStopsPayload, getFullRouteSegmentStopIds, getTripStopLabel, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
 
 export function CompanyTripDetailsPage() {
   const { tripId = '' } = useParams();
@@ -49,6 +49,7 @@ export function CompanyTripDetailsPage() {
   const { data: cities = [] } = useCities();
   const [openEdit, setOpenEdit] = useState(false);
   const [openStatusModal, setOpenStatusModal] = useState(false);
+  const [openCompleteModal, setOpenCompleteModal] = useState(false);
   const [statusValue, setStatusValue] = useState<string>('scheduled');
   const [form, setForm] = useState<any | null>(null);
   const [stopsForm, setStopsForm] = useState<any[]>([]);
@@ -63,6 +64,16 @@ export function CompanyTripDetailsPage() {
   });
   const { data: drivers = [] } = useDrivers(companyId, { enabled: !!companyId });
   const { data: restStops = [] } = useRestStops(companyId);
+
+  const nowValue = toDateTimeInputValue(new Date());
+  const farFutureValue = toDateTimeInputValue(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+  const departureMax = farFutureValue;
+  const arrivalMin = form?.departure_datetime || nowValue;
+  const arrivalMax = form?.departure_datetime
+    ? toDateTimeInputValue(new Date(new Date(form.departure_datetime).getTime() + MAX_TRIP_DURATION_DAYS * 24 * 60 * 60 * 1000))
+    : farFutureValue;
+  const stopMin = form?.departure_datetime || nowValue;
+  const stopMax = form?.expected_arrival_datetime || arrivalMax;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -134,6 +145,10 @@ export function CompanyTripDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ['trips'] }),
         queryClient.invalidateQueries({ queryKey: ['bookings'] }),
       ]);
+      setOpenCompleteModal(false);
+    },
+    onError: (mutationError) => {
+      setError(mutationError instanceof Error ? mutationError.message : messages.common.unexpectedError);
     },
   });
 
@@ -145,6 +160,16 @@ export function CompanyTripDetailsPage() {
       }
       return updateTrip(tripId, { status: statusValue });
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['trip', tripId] });
+      const previousTrip = queryClient.getQueryData(['trip', tripId]);
+      queryClient.setQueryData(['trip', tripId], (old: any) =>
+        old ? { ...old, status: statusValue } : old,
+      );
+      setOpenStatusModal(false);
+      setError(null);
+      return { previousTrip };
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['trip', tripId] }),
@@ -153,10 +178,12 @@ export function CompanyTripDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ['trips'] }),
         queryClient.invalidateQueries({ queryKey: ['bookings'] }),
       ]);
-      setOpenStatusModal(false);
-      setError(null);
     },
-    onError: (mutationError) => {
+    onError: (mutationError, _variables, context) => {
+      if (context?.previousTrip) {
+        queryClient.setQueryData(['trip', tripId], context.previousTrip);
+      }
+      setOpenStatusModal(true);
       setError(mutationError instanceof Error ? mutationError.message : messages.common.unexpectedError);
     },
   });
@@ -177,8 +204,8 @@ export function CompanyTripDetailsPage() {
       driver_id: trip.driver?.id ?? trip.driver_id,
       origin_city_id: trip.origin_city_id,
       destination_city_id: trip.destination_city_id,
-      departure_datetime: toInputDateTime(trip.departure_datetime),
-      expected_arrival_datetime: toInputDateTime(trip.expected_arrival_datetime),
+      departure_datetime: toDateTimeInputValue(trip.departure_datetime),
+      expected_arrival_datetime: toDateTimeInputValue(trip.expected_arrival_datetime),
       price: trip.price,
       offer_is: !!trip.offer_is,
       price_offer: trip.price_offer,
@@ -190,8 +217,8 @@ export function CompanyTripDetailsPage() {
         stop_type: stop.stop_type,
         city_id: stop.city_id,
         rest_stop_id: stop.rest_stop_id,
-        time_arrival: stop.time_arrival ? toInputDateTime(stop.time_arrival) : '',
-        time_departure: stop.time_departure ? toInputDateTime(stop.time_departure) : '',
+        time_arrival: stop.time_arrival ? toDateTimeInputValue(stop.time_arrival) : '',
+        time_departure: stop.time_departure ? toDateTimeInputValue(stop.time_departure) : '',
         is_boarding_allowed: !!stop.is_boarding_allowed,
         is_dropoff_allowed: !!stop.is_dropoff_allowed,
       })),
@@ -237,19 +264,30 @@ export function CompanyTripDetailsPage() {
             >
               {messages.company.trips.bookOnThisTrip}
             </Button>
-            <Button variant="secondary" onClick={openEditModal}>{messages.company.trips.editTrip}</Button>
+            <Button
+              variant="secondary"
+              onClick={openEditModal}
+              disabled={trip.status === 'completed' || trip.status === 'cancelled'}
+            >
+              {messages.company.trips.editTrip}
+            </Button>
             <Button
               variant="secondary"
               onClick={() => {
                 setStatusValue(trip.status || 'scheduled');
+                setError(null);
                 setOpenStatusModal(true);
               }}
+              disabled={trip.status === 'completed' || trip.status === 'cancelled'}
             >
               تعديل حالة الرحلة
             </Button>
             <Button
               variant="mint"
-              onClick={() => completeMutation.mutate()}
+              onClick={() => {
+                setError(null);
+                setOpenCompleteModal(true);
+              }}
               disabled={completeMutation.isPending || trip.status === 'completed' || trip.status === 'cancelled'}
             >
               {messages.company.trips.completeTrip}
@@ -386,7 +424,7 @@ export function CompanyTripDetailsPage() {
           <div className="grid gap-4">
             <div className="flex justify-center">
               <div className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
-                <QRCodeSVG value={qrToken} size={200} level="M" />
+                <TicketQrCode value={qrToken} />
                 <span className="max-w-[220px] truncate font-mono text-xs text-slate-500" title={qrToken}>
                   {qrToken}
                 </span>
@@ -442,10 +480,20 @@ export function CompanyTripDetailsPage() {
                     </Select>
                   </Field>
                   <Field label={messages.company.trips.departureTime}>
-                    <DateTimePicker value={form.departure_datetime} onChange={(val) => setForm({ ...form, departure_datetime: val })} />
+                    <DateTimePicker
+                      value={form.departure_datetime}
+                      onChange={(val) => setForm({ ...form, departure_datetime: val })}
+                      min={nowValue}
+                      max={departureMax}
+                    />
                   </Field>
                   <Field label={messages.company.trips.expectedArrival}>
-                    <DateTimePicker value={form.expected_arrival_datetime} onChange={(val) => setForm({ ...form, expected_arrival_datetime: val })} />
+                    <DateTimePicker
+                      value={form.expected_arrival_datetime}
+                      onChange={(val) => setForm({ ...form, expected_arrival_datetime: val })}
+                      min={arrivalMin}
+                      max={arrivalMax}
+                    />
                   </Field>
                   <Field label={messages.common.price}>
                     <Input
@@ -493,7 +541,7 @@ export function CompanyTripDetailsPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <Field label="نوع المحطة">
                           <Select value={stop.stop_type} onChange={(e) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, stop_type: e.target.value } : item))}>
                             <option value="city">{messages.tripStopType.city}</option>
@@ -522,11 +570,21 @@ export function CompanyTripDetailsPage() {
                         </Field>
 
                         <Field label="وقت الوصول">
-                          <DateTimePicker value={stop.time_arrival || ''} onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_arrival: val } : item))} />
+                          <DateTimePicker
+                            value={stop.time_arrival || ''}
+                            onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_arrival: val } : item))}
+                            min={stopMin}
+                            max={stopMax}
+                          />
                         </Field>
 
                         <Field label="وقت المغادرة">
-                          <DateTimePicker value={stop.time_departure || ''} onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_departure: val } : item))} />
+                          <DateTimePicker
+                            value={stop.time_departure || ''}
+                            onChange={(val) => setStopsForm(stopsForm.map((item, itemIndex) => itemIndex === index ? { ...item, time_departure: val } : item))}
+                            min={stopMin}
+                            max={stopMax}
+                          />
                         </Field>
                       </div>
                     </div>
@@ -577,6 +635,12 @@ export function CompanyTripDetailsPage() {
 
       <Modal open={openStatusModal} onClose={() => !updateStatusMutation.isPending && setOpenStatusModal(false)} title="تعديل حالة الرحلة">
         <div className="grid gap-4">
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
           <Field label={messages.common.status}>
             <Select value={statusValue} onChange={(e) => setStatusValue(e.target.value)}>
               <option value="scheduled">{messages.status.scheduled}</option>
@@ -595,12 +659,43 @@ export function CompanyTripDetailsPage() {
           </div>
         </div>
       </Modal>
+
+      <Modal
+        open={openCompleteModal}
+        title={messages.company.trips.completeTripConfirmTitle}
+        onClose={() => !completeMutation.isPending && setOpenCompleteModal(false)}
+      >
+        <div className="space-y-6">
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          <p className="text-base text-slate-600 dark:text-slate-300">
+            {messages.company.trips.completeTripConfirmMessage}
+          </p>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setOpenCompleteModal(false)}
+              disabled={completeMutation.isPending}
+            >
+              {messages.common.close}
+            </Button>
+            <Button
+              type="button"
+              variant="mint"
+              onClick={() => completeMutation.mutate()}
+              disabled={completeMutation.isPending}
+            >
+              {completeMutation.isPending ? messages.common.loading : messages.company.trips.completeTripConfirmButton}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
-}
-
-function toInputDateTime(value: string) {
-  const date = new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
 }

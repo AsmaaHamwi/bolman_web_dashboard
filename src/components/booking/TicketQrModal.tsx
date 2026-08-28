@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { TicketQrCode } from './TicketQrCode';
 import { Share2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -92,23 +92,7 @@ function TicketQrCard({
       </div>
 
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="rounded-2xl bg-white p-4">
-          {/*
-            qr_token is 64 hex chars: at level H that is a version-7 symbol (45x45), so 200px
-            left every module under 4px and a driver's camera could not resolve it off a monitor.
-            Level M is version 5 (37x37) and 256px puts each module at ~5.7px, which is the
-            density a phone camera actually decodes. The shared PNG stays on level H because it
-            renders at 1024px and gets re-compressed by messaging apps (see utils/qrImage.ts).
-          */}
-          <QRCodeSVG
-            value={ticket.qr_token}
-            size={256}
-            level="M"
-            marginSize={4}
-            bgColor="#FFFFFF"
-            fgColor="#000000"
-          />
-        </div>
+        <TicketQrCode value={ticket.qr_token} />
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[160px]">
           <Button type="button" variant="secondary" disabled={sharing} onClick={handleShare}>

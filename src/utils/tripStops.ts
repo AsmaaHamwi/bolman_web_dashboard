@@ -16,6 +16,8 @@ export type TripStopValidationMessages = {
   originDestinationRequired: string;
   departureArrivalRequired: string;
   arrivalAfterDeparture: string;
+  departureInPast: string;
+  tripTooLong: string;
   minTwoStops: string;
   firstStopOrigin: string;
   lastStopDestination: string;
@@ -28,6 +30,8 @@ const defaultValidationMessages: TripStopValidationMessages = {
   originDestinationRequired: 'Origin and destination are required.',
   departureArrivalRequired: 'Departure and expected arrival are required.',
   arrivalAfterDeparture: 'Expected arrival must be after departure.',
+  departureInPast: 'Departure time cannot be in the past.',
+  tripTooLong: 'Trip duration is unrealistically long.',
   minTwoStops: 'At least two stops are required.',
   firstStopOrigin: 'The first stop must match the origin city.',
   lastStopDestination: 'The last stop must match the destination city.',
@@ -35,6 +39,12 @@ const defaultValidationMessages: TripStopValidationMessages = {
   restStopNeedsRest: 'Each rest stop must have a rest stop selected.',
   stopTimesOrder: 'Stop times must be in chronological order.',
 };
+
+/** Sanity bound on how long a single trip (departure to final arrival) can last. */
+export const MAX_TRIP_DURATION_DAYS = 3;
+const MAX_TRIP_DURATION_MS = MAX_TRIP_DURATION_DAYS * 24 * 60 * 60 * 1000;
+/** Small grace window so an in-flight submission isn't rejected for clock drift. */
+const PAST_DEPARTURE_GRACE_MS = 5 * 60 * 1000;
 
 export function getTripStopLabel(stop: Partial<TripStopShape>) {
   if (stop.stop_type === 'rest_stop') {
@@ -154,9 +164,13 @@ export function validateTripStopSequence(
 
   if (!origin_city_id || !destination_city_id) return m.originDestinationRequired;
   if (!departure_datetime || !expected_arrival_datetime) return m.departureArrivalRequired;
-  if (new Date(expected_arrival_datetime).getTime() <= new Date(departure_datetime).getTime()) {
-    return m.arrivalAfterDeparture;
-  }
+
+  const departureMoment = new Date(departure_datetime).getTime();
+  const arrivalMoment = new Date(expected_arrival_datetime).getTime();
+
+  if (arrivalMoment <= departureMoment) return m.arrivalAfterDeparture;
+  if (departureMoment < Date.now() - PAST_DEPARTURE_GRACE_MS) return m.departureInPast;
+  if (arrivalMoment - departureMoment > MAX_TRIP_DURATION_MS) return m.tripTooLong;
   if (stops.length < 2) return m.minTwoStops;
 
   const firstStop = stops[0];

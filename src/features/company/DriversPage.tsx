@@ -287,7 +287,7 @@ export function DriversPage() {
                   type="button"
                   variant={driver.status === 'active' ? 'danger' : 'mint'}
                   onClick={() => toggleDriverMutation.mutate(driver)}
-                  disabled={toggleDriverMutation.isPending}
+                  disabled={toggleDriverMutation.isPending && toggleDriverMutation.variables?.id === driver.id}
                 >
                   {driver.status === 'active' ? messages.common.disable : messages.common.enable}
                 </Button>

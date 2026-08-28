@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { throwIfError } from './errors';
+import { ACTIVE_BOOKING_STATUSES } from './trip.service';
 
 /**
  * Fetch bookings that belong to a set of company trips.
@@ -109,19 +110,32 @@ export async function getCompanyKpis(companyId?: string | null) {
     // Any other RPC failure falls through to the client-side aggregation below.
   }
 
+  const nowIso = new Date().toISOString();
   const [tripsRes, activeTripsRes, companyTripsRes] = await Promise.all([
     supabase.from('trips').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
-    supabase.from('trips').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'active'),
+    // A trip stuck on status='active' past its arrival time is stale, not actually active —
+    // see 20260827120000_expire_stale_active_trips.sql.
+    supabase
+      .from('trips')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .eq('status', 'active')
+      .gt('expected_arrival_datetime', nowIso),
     supabase.from('trips').select('id').eq('company_id', companyId),
   ]);
 
   throwIfError(companyTripsRes.error);
 
-  const bookings = await fetchBookingsForTrips<{
+  const allBookings = await fetchBookingsForTrips<{
     count_passengers: number;
     price_total: number;
     rating_value: number | null;
-  }>((companyTripsRes.data ?? []).map((t) => t.id), 'count_passengers,price_total,rating_value');
+    booking_status: string;
+  }>((companyTripsRes.data ?? []).map((t) => t.id), 'count_passengers,price_total,rating_value,booking_status');
+
+  // Exclude cancelled/pending bookings so revenue and passenger totals only reflect real
+  // business, same as ACTIVE_BOOKING_STATUSES elsewhere in the app.
+  const bookings = allBookings.filter((b) => (ACTIVE_BOOKING_STATUSES as readonly string[]).includes(b.booking_status));
 
   const rated = bookings.filter((b) => b.rating_value != null);
   const avgRating = rated.length
@@ -137,6 +151,73 @@ export async function getCompanyKpis(companyId?: string | null) {
     ratedBookings: rated.length,
     avgRating,
   };
+}
+
+export type SystemCompanyReportRow = {
+  id: string;
+  name: string;
+  status: string | null;
+  trips: number;
+  activeTrips: number;
+  bookings: number;
+  passengers: number;
+  revenue: number;
+  avgRating: number | null;
+};
+
+export type SystemReportsResult = {
+  companies: SystemCompanyReportRow[];
+  totals: {
+    companies: number;
+    trips: number;
+    bookings: number;
+    passengers: number;
+    revenue: number;
+    scans: number;
+  };
+  topByRevenue: SystemCompanyReportRow | null;
+  topByBookings: SystemCompanyReportRow | null;
+};
+
+export async function getSystemReportsData(): Promise<SystemReportsResult> {
+  const [companiesRes, scansRes] = await Promise.all([
+    supabase.from('companies').select('id, name, status').order('created_at', { ascending: false }),
+    supabase.from('qr_scan_logs').select('id', { count: 'exact', head: true }),
+  ]);
+  throwIfError(companiesRes.error);
+
+  const companyRows = companiesRes.data ?? [];
+  const kpis = await Promise.all(companyRows.map((c) => getCompanyKpis(c.id)));
+
+  const companies: SystemCompanyReportRow[] = companyRows
+    .map((c, i) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status ?? null,
+      trips: kpis[i].trips,
+      activeTrips: kpis[i].activeTrips,
+      bookings: kpis[i].bookings,
+      passengers: kpis[i].passengers,
+      revenue: kpis[i].revenue,
+      avgRating: kpis[i].avgRating,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const totals = companies.reduce(
+    (acc, c) => {
+      acc.trips += c.trips;
+      acc.bookings += c.bookings;
+      acc.passengers += c.passengers;
+      acc.revenue += c.revenue;
+      return acc;
+    },
+    { companies: companies.length, trips: 0, bookings: 0, passengers: 0, revenue: 0, scans: scansRes.count ?? 0 },
+  );
+
+  const topByRevenue = companies[0] ?? null;
+  const topByBookings = companies.length ? [...companies].sort((a, b) => b.bookings - a.bookings)[0] : null;
+
+  return { companies, totals, topByRevenue, topByBookings };
 }
 
 export async function getCompanyReportsData(

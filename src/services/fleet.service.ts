@@ -47,24 +47,54 @@ export async function listDrivers(companyId?: string | null) {
   throwIfError(error); return data ?? [];
 }
 
+// Nothing transitions a trip from 'active' to 'completed' once its arrival time passes (staff
+// have to click "إنهاء الرحلة" manually), so a stale 'active' trip would otherwise block
+// driver/bus suspension forever. expire_stale_active_trips() (see supabase/migrations) sweeps
+// those trips via the same complete_trip RPC the manual button uses; call it opportunistically
+// here so the gate self-heals. The expected_arrival_datetime filter below is defense-in-depth in
+// case the sweep RPC is unavailable (e.g. migration not yet applied) or fails silently.
+async function sweepStaleActiveTrips() {
+  try {
+    await supabase.rpc('expire_stale_active_trips');
+  } catch {
+    // best-effort — the time-bound filters below still prevent a stale trip from blocking
+  }
+}
+
 export async function hasActiveTripForBus(busId: string) {
-  const { data, error } = await supabase.from('trips').select('id').eq('bus_id', busId).eq('status', 'active').limit(1);
+  await sweepStaleActiveTrips();
+  const { data, error } = await supabase
+    .from('trips')
+    .select('id')
+    .eq('bus_id', busId)
+    .eq('status', 'active')
+    .gt('expected_arrival_datetime', new Date().toISOString())
+    .limit(1);
   throwIfError(error);
   return (data?.length ?? 0) > 0;
 }
 
 export async function hasActiveTripForDriver(driverId: string) {
-  const { data, error } = await supabase.from('trips').select('id').eq('driver_id', driverId).eq('status', 'active').limit(1);
+  await sweepStaleActiveTrips();
+  const { data, error } = await supabase
+    .from('trips')
+    .select('id')
+    .eq('driver_id', driverId)
+    .eq('status', 'active')
+    .gt('expected_arrival_datetime', new Date().toISOString())
+    .limit(1);
   throwIfError(error);
   return (data?.length ?? 0) > 0;
 }
 
 export async function getActiveTripForDriver(driverId: string): Promise<{ id: string; expected_arrival_datetime?: string | null } | null> {
+  await sweepStaleActiveTrips();
   const { data, error } = await supabase
     .from('trips')
     .select('id, expected_arrival_datetime')
     .eq('driver_id', driverId)
     .eq('status', 'active')
+    .gt('expected_arrival_datetime', new Date().toISOString())
     .limit(1)
     .single();
   if (error?.code === 'PGRST116') return null; // no rows

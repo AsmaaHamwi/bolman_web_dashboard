@@ -2,7 +2,15 @@ import { supabase } from '../lib/supabase';
 import type { TripSearchRow } from '../types/domain';
 import { getSeatsStatus } from './seat.service';
 import { throwIfError } from './errors';
-import { getLocalDateInputValue } from '../utils/format';
+import { getLocalDateInputValue, toUtcIsoString } from '../utils/format';
+
+function toUtcStopsPayload(stops: any[]) {
+  return stops.map((stop) => ({
+    ...stop,
+    time_arrival: toUtcIsoString(stop.time_arrival),
+    time_departure: toUtcIsoString(stop.time_departure),
+  }));
+}
 
 export type TripManifestRow = {
   booking_id: string;
@@ -187,9 +195,11 @@ export async function listTrips(
 
   const departureDateTo = filters?.departureDateTo?.trim();
   const departureDateFromRaw = filters?.departureDateFrom?.trim();
-  // Hide past trips by default; once the user searches or sets an explicit date range, show everything they asked for.
+  // Hide past trips by default unless the user searches, picks an explicit "from"/"to" date, or
+  // filters by a specific status (e.g. "مكتمل") -- someone asking for completed trips clearly
+  // wants to see old ones too, not just today's, so the default must not silently hide them.
   const departureDateFrom = departureDateFromRaw
-    || (!search && !departureDateTo ? getLocalDateInputValue(new Date()) : undefined);
+    || (!search && !status && !departureDateTo ? getLocalDateInputValue(new Date()) : undefined);
   if (departureDateFrom) q = q.gte('departure_datetime', `${departureDateFrom}T00:00:00`);
 
   if (departureDateTo) q = q.lte('departure_datetime', `${departureDateTo}T23:59:59.999`);
@@ -240,13 +250,13 @@ export async function createTripWithStops(input: { trip: any; stops: any[] }) {
     p_driver_id: input.trip.driver_id,
     p_origin_city_id: input.trip.origin_city_id,
     p_destination_city_id: input.trip.destination_city_id,
-    p_departure_datetime: input.trip.departure_datetime,
-    p_expected_arrival_datetime: input.trip.expected_arrival_datetime,
+    p_departure_datetime: toUtcIsoString(input.trip.departure_datetime),
+    p_expected_arrival_datetime: toUtcIsoString(input.trip.expected_arrival_datetime),
     p_price: input.trip.price,
     p_offer_is: input.trip.offer_is,
     p_price_offer: input.trip.offer_is ? input.trip.price_offer : null,
     p_title_offer: input.trip.offer_is ? input.trip.title_offer : null,
-    p_stops: input.stops,
+    p_stops: toUtcStopsPayload(input.stops),
   });
 
   throwIfError(error);
@@ -316,13 +326,13 @@ export async function updateTripWithStops(input: { trip_id: string; trip: any; s
     p_driver_id: input.trip.driver_id,
     p_origin_city_id: input.trip.origin_city_id,
     p_destination_city_id: input.trip.destination_city_id,
-    p_departure_datetime: input.trip.departure_datetime,
-    p_expected_arrival_datetime: input.trip.expected_arrival_datetime,
+    p_departure_datetime: toUtcIsoString(input.trip.departure_datetime),
+    p_expected_arrival_datetime: toUtcIsoString(input.trip.expected_arrival_datetime),
     p_price: input.trip.price,
     p_offer_is: input.trip.offer_is,
     p_price_offer: input.trip.offer_is ? input.trip.price_offer : null,
     p_title_offer: input.trip.offer_is ? input.trip.title_offer : null,
-    p_stops: input.stops,
+    p_stops: toUtcStopsPayload(input.stops),
   });
   throwIfError(error);
   return getTripDetails((data as string) || input.trip_id);

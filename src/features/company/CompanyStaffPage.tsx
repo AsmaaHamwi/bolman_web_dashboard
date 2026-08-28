@@ -23,6 +23,7 @@ import {
   type CompanyStaffPermissions,
   type CompanyStaffRecord,
 } from '../../services/staff.service';
+import { sanitizeName, sanitizePositiveDigits, isValidName, getSyrianPhoneError } from '../../utils/validation';
 
 type FeedbackTone = 'success' | 'error';
 
@@ -46,6 +47,42 @@ export function CompanyStaffPage() {
   const [createPermissions, setCreatePermissions] = useState<CompanyStaffPermissions>(defaultCompanyStaffPermissions);
   const [editPermissions, setEditPermissions] = useState<CompanyStaffPermissions>(defaultCompanyStaffPermissions);
   const [feedback, setFeedback] = useState<{ tone: FeedbackTone; message: string } | null>(null);
+  const [formErrors, setFormErrors] = useState<{ full_name?: string; email?: string; phone?: string }>({});
+
+  function validateForm(): boolean {
+    const errs: typeof formErrors = {};
+
+    const nameVal = form.full_name.trim();
+    if (!nameVal) {
+      errs.full_name = 'يرجى إدخال الاسم.';
+    } else if (!isValidName(nameVal)) {
+      errs.full_name = 'الاسم يجب أن يتكون من حرفين على الأقل وبدون رموز.';
+    }
+
+    const emailVal = form.email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailVal) {
+      errs.email = 'يرجى إدخال البريد الإلكتروني.';
+    } else if (!emailRegex.test(emailVal)) {
+      errs.email = 'البريد الإلكتروني غير صالح (مثال: example@domain.com).';
+    }
+
+    const phoneErr = getSyrianPhoneError(form.phone, true);
+    if (phoneErr) {
+      errs.phone = phoneErr;
+    }
+
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function openCreateModal() {
+    setFormErrors({});
+    setFeedback(null);
+    setForm(initialForm);
+    setCreatePermissions(defaultCompanyStaffPermissions);
+    setOpenCreate(true);
+  }
 
   const staffQuery = useQuery({
     queryKey: ['company-staff', companyId],
@@ -69,6 +106,7 @@ export function CompanyStaffPage() {
       setOpenCreate(false);
       setForm(initialForm);
       setCreatePermissions(defaultCompanyStaffPermissions);
+      setFormErrors({});
     },
     onError: (error) => {
       setFeedback({ tone: 'error', message: error instanceof Error ? error.message : messages.common.unexpectedError });
@@ -135,7 +173,7 @@ export function CompanyStaffPage() {
         title={messages.company.staff.title}
         subtitle={messages.company.staff.subtitle}
         actions={
-          <Button onClick={() => setOpenCreate(true)}>
+          <Button onClick={openCreateModal}>
             <Plus size={18} />
             {messages.company.staff.addButton}
           </Button>
@@ -183,13 +221,16 @@ export function CompanyStaffPage() {
       <Modal open={openCreate} onClose={() => !createMutation.isPending && setOpenCreate(false)} title={messages.company.staff.modalTitle}>
         <div className="grid gap-4">
           <Field label={messages.common.name}>
-            <Input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
+            <Input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: sanitizeName(event.target.value) })} />
+            {formErrors.full_name && <p className="text-xs text-red-500">{formErrors.full_name}</p>}
           </Field>
           <Field label={messages.common.email}>
             <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
           </Field>
           <Field label={messages.common.phone}>
-            <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <Input inputMode="numeric" maxLength={10} value={form.phone} onChange={(event) => setForm({ ...form, phone: sanitizePositiveDigits(event.target.value).slice(0, 10) })} />
+            {formErrors.phone && <p className="text-xs text-red-500">{formErrors.phone}</p>}
           </Field>
           <Field label={messages.company.staff.temporaryPassword}>
             <Input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
@@ -205,7 +246,7 @@ export function CompanyStaffPage() {
             <Button variant="secondary" onClick={() => setOpenCreate(false)} disabled={createMutation.isPending}>
               {messages.common.close}
             </Button>
-            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+            <Button onClick={() => validateForm() && createMutation.mutate()} disabled={createMutation.isPending}>
               {createMutation.isPending ? messages.common.loading : messages.common.create}
             </Button>
           </div>

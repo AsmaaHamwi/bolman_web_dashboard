@@ -11,8 +11,10 @@ type DateInputProps = {
   onChange: (value: string) => void; // yields yyyy-mm-dd or ""
   className?: string;
   min?: string; // yyyy-mm-dd
+  max?: string; // yyyy-mm-dd
   /** How many past years the year dropdown should reach back. Defaults to 0 (future-facing pickers). */
   pastYears?: number;
+  disabled?: boolean;
 };
 
 function parseParts(value: string): { year: string; month: string; day: string } {
@@ -31,7 +33,7 @@ const selectClass =
 
 const optionClass = "text-slate-900 bg-white dark:bg-bolman-surfaceDark dark:text-white";
 
-export function DateInput({ value, onChange, className, min, pastYears = 0 }: DateInputProps) {
+export function DateInput({ value, onChange, className, min, max, pastYears = 0, disabled = false }: DateInputProps) {
   const [parts, setParts] = useState(() => parseParts(value));
 
   useEffect(() => {
@@ -40,13 +42,13 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
 
   const { year, month, day } = parts;
   const minParts = parseParts(min ?? "");
+  const maxParts = parseParts(max ?? "");
   const currentYear = new Date().getFullYear();
   const yearFrom = Number(minParts.year) || currentYear - Math.max(0, pastYears);
-  const yearTo = currentYear + 3;
+  const yearTo = Number(maxParts.year) || currentYear + 3;
   const dayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
-  const yearOptions = Array.from({ length: yearTo - yearFrom + 1 }, (_, i) => yearFrom + i);
-  const yearRef = useRef<HTMLInputElement>(null);
+  const yearOptions = Array.from({ length: Math.max(0, yearTo - yearFrom) + 1 }, (_, i) => yearFrom + i);
 
   function update(field: "year" | "month" | "day", newVal: string) {
     const next = { ...parts, [field]: newVal };
@@ -58,12 +60,13 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
     <div
       className={cx(
         "flex items-center gap-0.5 overflow-hidden min-w-0 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 transition focus-within:border-bolman-purple focus-within:ring-4 focus-within:ring-bolman-purple/10 dark:border-bolman-borderDark dark:bg-bolman-surfaceDark",
+        disabled && "opacity-50",
         className,
       )}
       dir="rtl"
     >
       {/* Day */}
-      <select value={day} onChange={(e) => update("day", e.target.value)} className={selectClass} aria-label="اليوم">
+      <select value={day} onChange={(e) => update("day", e.target.value)} className={selectClass} aria-label="اليوم" disabled={disabled}>
         <option value="" className={optionClass}>يوم</option>
         {dayOptions.map((d) => (
           <option key={d} value={String(d).padStart(2, "0")} className={optionClass}>{d}</option>
@@ -73,7 +76,7 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
       <span className="text-slate-300 dark:text-slate-600 select-none">/</span>
 
       {/* Month */}
-      <select value={month} onChange={(e) => update("month", e.target.value)} className={selectClass} aria-label="الشهر">
+      <select value={month} onChange={(e) => update("month", e.target.value)} className={selectClass} aria-label="الشهر" disabled={disabled}>
         <option value="" className={optionClass}>شهر</option>
         {monthOptions.map((m) => (
           <option key={m} value={String(m).padStart(2, "0")} className={optionClass}>{MONTHS_AR[m - 1]}</option>
@@ -83,7 +86,7 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
       <span className="text-slate-300 dark:text-slate-600 select-none">/</span>
 
       {/* Year */}
-      <select value={year} onChange={(e) => update("year", e.target.value)} className={selectClass} aria-label="السنة">
+      <select value={year} onChange={(e) => update("year", e.target.value)} className={selectClass} aria-label="السنة" disabled={disabled}>
         <option value="" className={optionClass}>السنة</option>
         {yearOptions.map((y) => (
           <option key={y} value={String(y)} className={optionClass}>{y}</option>
@@ -91,7 +94,7 @@ export function DateInput({ value, onChange, className, min, pastYears = 0 }: Da
       </select>
 
       {/* Clear button */}
-      {value ? (
+      {value && !disabled ? (
         <button
           type="button"
           onClick={() => onChange("")}

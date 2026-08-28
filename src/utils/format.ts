@@ -54,6 +54,24 @@ export function getLocalDateInputValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function toDateTimeInputValue(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+/**
+ * Convert a naive "YYYY-MM-DDTHH:mm" picker value (parsed by the browser as local time)
+ * into a real UTC ISO instant. Required before sending it to a `timestamptz` RPC param --
+ * the DB session's TimeZone is UTC, so a naive string sent as-is gets reinterpreted as UTC
+ * instead of the viewer's local time, silently shifting the stored instant.
+ */
+export function toUtcIsoString(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export function formatTripDuration(departure?: string | null, arrival?: string | null) {
   if (!departure || !arrival) return '';
   const dep = new Date(departure).getTime();

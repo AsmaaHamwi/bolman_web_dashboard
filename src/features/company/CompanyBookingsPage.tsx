@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { TicketQrCode } from '../../components/booking/TicketQrCode';
 import { Eye, Loader2, QrCode, SquarePen } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { DataTable, Td } from '../../components/ui/Table';
@@ -252,7 +252,7 @@ export function CompanyBookingsPage() {
               <div className="flex flex-wrap justify-center gap-6">
                 {qrTokens.map((token, index) => (
                   <div key={`${token}-${index}`} className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-4 dark:border-bolman-borderDark">
-                    <QRCodeSVG value={token} size={160} level="M" />
+                    <TicketQrCode value={token} />
                     <span className="max-w-[200px] truncate font-mono text-xs text-slate-500" title={token}>
                       {token.slice(0, 24)}…
                     </span>

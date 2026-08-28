@@ -10,8 +10,8 @@ import { useCompanyContext } from '../../hooks/useCompanyContext';
 import { useBuses, useDrivers, useRestStops } from '../../hooks/useFleet';
 import { useCities } from '../../hooks/useCities';
 import { useCreateTrip } from '../../hooks/useTrips';
-import { formatDateTime } from '../../utils/format';
-import { buildTripStopsPayload, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
+import { formatDateTime, toDateTimeInputValue } from '../../utils/format';
+import { MAX_TRIP_DURATION_DAYS, buildTripStopsPayload, validateTripStopSequence, type TripStopValidationMessages } from '../../utils/tripStops';
 
 type MiddleStopDraft = {
   stop_type: 'city' | 'rest_stop';
@@ -108,6 +108,16 @@ export function CreateTripPage() {
     trip.expected_arrival_datetime,
     middleStops,
   ]);
+
+  const nowValue = toDateTimeInputValue(new Date());
+  const farFutureValue = toDateTimeInputValue(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+  const departureMax = farFutureValue;
+  const arrivalMin = trip.departure_datetime || nowValue;
+  const arrivalMax = trip.departure_datetime
+    ? toDateTimeInputValue(new Date(new Date(trip.departure_datetime).getTime() + MAX_TRIP_DURATION_DAYS * 24 * 60 * 60 * 1000))
+    : farFutureValue;
+  const midStopMin = trip.departure_datetime || nowValue;
+  const midStopMax = trip.expected_arrival_datetime || arrivalMax;
 
   const originCityName = cities.find((c: any) => c.id === trip.origin_city_id)?.name ?? '-';
   const destCityName = cities.find((c: any) => c.id === trip.destination_city_id)?.name ?? '-';
@@ -221,10 +231,20 @@ export function CreateTripPage() {
               </Select>
             </Field>
             <Field label={messages.company.trips.departureTime}>
-              <DateTimePicker value={trip.departure_datetime} onChange={(val) => setTrip({ ...trip, departure_datetime: val })} />
+              <DateTimePicker
+                value={trip.departure_datetime}
+                onChange={(val) => setTrip({ ...trip, departure_datetime: val })}
+                min={nowValue}
+                max={departureMax}
+              />
             </Field>
             <Field label={messages.company.trips.expectedArrival}>
-              <DateTimePicker value={trip.expected_arrival_datetime} onChange={(val) => setTrip({ ...trip, expected_arrival_datetime: val })} />
+              <DateTimePicker
+                value={trip.expected_arrival_datetime}
+                onChange={(val) => setTrip({ ...trip, expected_arrival_datetime: val })}
+                min={arrivalMin}
+                max={arrivalMax}
+              />
             </Field>
             <Field label={messages.common.price}>
               <Input
@@ -323,7 +343,7 @@ export function CreateTripPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="نوع المحطة">
                     <Select
                       value={stop.stop_type}
@@ -364,6 +384,8 @@ export function CreateTripPage() {
                     <DateTimePicker
                       value={stop.time_arrival || ''}
                       onChange={(val) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_arrival: val } : item)))}
+                      min={midStopMin}
+                      max={midStopMax}
                     />
                   </Field>
 
@@ -371,6 +393,8 @@ export function CreateTripPage() {
                     <DateTimePicker
                       value={stop.time_departure || ''}
                       onChange={(val) => setMiddleStops(middleStops.map((item, itemIndex) => (itemIndex === index ? { ...item, time_departure: val } : item)))}
+                      min={midStopMin}
+                      max={midStopMax}
                     />
                   </Field>
                 </div>

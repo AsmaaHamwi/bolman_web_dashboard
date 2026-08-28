@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from './Button';
 
@@ -13,7 +14,7 @@ export function Modal({ open, title, onClose, children }: { open: boolean; title
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm bolman-fade-up">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl animate-bolman-modal-in dark:border-bolman-borderDark dark:bg-bolman-cardDark">
         <div className="mb-5 flex items-center justify-between">
@@ -22,6 +23,7 @@ export function Modal({ open, title, onClose, children }: { open: boolean; title
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

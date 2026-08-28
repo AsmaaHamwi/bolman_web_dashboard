@@ -7,6 +7,7 @@ import { DataTable, Td } from '../../components/ui/Table';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { DateInput } from '../../components/ui/DateInput';
+import { Modal } from '../../components/ui/Modal';
 import { FilterPanel, CompactFilterControl, compactFilterInputClass } from '../../components/ui/FilterPanel';
 import { Pagination } from '../../components/ui/Pagination';
 import { useI18n } from '../../hooks/useI18n';
@@ -36,12 +37,28 @@ function latestDate(...dates: Array<string | undefined>) {
   return dates.map((date) => (date ?? '').trim()).filter(Boolean).sort().pop() ?? '';
 }
 
+type DiscountOption = { type: 'percent'; value: number } | { type: 'fixed'; value: number };
+
+const DISCOUNT_OPTIONS: DiscountOption[] = [
+  { type: 'percent', value: 10 },
+  { type: 'percent', value: 15 },
+  { type: 'percent', value: 20 },
+  { type: 'percent', value: 30 },
+  { type: 'fixed', value: 50000 },
+];
+
+function offerPriceFor(price: number, option: DiscountOption) {
+  const raw = option.type === 'percent' ? price * (1 - option.value / 100) : price - option.value;
+  return Math.max(0, Math.round(raw));
+}
+
 export function OffersPage() {
   const company = useCompanyContext();
   const companyId = company.data;
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<TripsListFilters>(EMPTY_OFFERS_FILTERS);
   const [queryFilters, setQueryFilters] = useState<TripsListFilters>(EMPTY_OFFERS_FILTERS);
+  const [discountTrip, setDiscountTrip] = useState<any | null>(null);
   const today = getLocalDateInputValue();
   const effectiveFilters: TripsListFilters = {
     ...queryFilters,
@@ -173,14 +190,12 @@ export function OffersPage() {
                   variant="secondary"
                   loading={update.isPending && update.variables?.id === trip.id}
                   onClick={() =>
-                    update.mutate({
-                      id: trip.id,
-                      patch: {
-                        offer_is: !trip.offer_is,
-                        price_offer: trip.offer_is ? null : trip.price * 0.85,
-                        title_offer: trip.offer_is ? null : messages.company.offers.specialOffer,
-                      },
-                    })
+                    trip.offer_is
+                      ? update.mutate({
+                          id: trip.id,
+                          patch: { offer_is: false, price_offer: null, title_offer: null },
+                        })
+                      : setDiscountTrip(trip)
                   }
                 >
                   {trip.offer_is ? messages.common.remove : messages.company.offers.activateOffer}
@@ -199,6 +214,50 @@ export function OffersPage() {
           onPageChange={setPage}
         />
       ) : null}
+
+      <Modal
+        open={!!discountTrip}
+        title={messages.company.offers.chooseDiscountTitle}
+        onClose={() => setDiscountTrip(null)}
+      >
+        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+          {messages.company.offers.chooseDiscountSubtitle}
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {DISCOUNT_OPTIONS.map((option) => {
+            const label = option.type === 'percent'
+              ? messages.company.offers.percentOff.replace('{value}', String(option.value))
+              : messages.company.offers.fixedOff.replace('{value}', option.value.toLocaleString());
+            return (
+              <Button
+                key={`${option.type}-${option.value}`}
+                variant="secondary"
+                className="flex-col gap-1 py-4"
+                loading={update.isPending && update.variables?.id === discountTrip?.id}
+                onClick={() => {
+                  if (!discountTrip) return;
+                  update.mutate({
+                    id: discountTrip.id,
+                    patch: {
+                      offer_is: true,
+                      price_offer: offerPriceFor(discountTrip.price, option),
+                      title_offer: messages.company.offers.specialOffer,
+                    },
+                  });
+                  setDiscountTrip(null);
+                }}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+        <div className="mt-5 flex justify-end">
+          <Button variant="ghost" onClick={() => setDiscountTrip(null)}>
+            {messages.company.offers.cancel}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

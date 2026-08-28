@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { TicketQrCode } from '../../components/booking/TicketQrCode';
 import { QrCode } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -232,6 +232,10 @@ export function CompanyBookingDetailsPage() {
               <span>{booking.trip?.departure_datetime ? formatDateTime(booking.trip.departure_datetime) : '-'}</span>
             </div>
             <div className="flex items-center justify-between">
+              <span>{bd.driverLabel}</span>
+              <span>{booking.trip?.driver?.user?.full_name || '-'}</span>
+            </div>
+            <div className="flex items-center justify-between">
               <span>{bd.currentSeatsLabel}</span>
               <span>{currentSeats}</span>
             </div>
@@ -378,7 +382,7 @@ export function CompanyBookingDetailsPage() {
             <div className="flex flex-wrap justify-center gap-6 p-2">
               {qrTokens.map((token: string, index: number) => (
                 <div key={`${token}-${index}`} className="flex flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
-                  <QRCodeSVG value={token} size={180} level="M" />
+                  <TicketQrCode value={token} />
                   <span className="max-w-[220px] truncate font-mono text-xs font-bold text-slate-700 dark:text-slate-200" title={token}>
                     {token}
                   </span>
@@ -399,7 +403,7 @@ export function CompanyBookingDetailsPage() {
           <div className="grid gap-4">
             <div className="flex justify-center">
               <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-bolman-borderDark dark:bg-bolman-surfaceDark">
-                <QRCodeSVG value={rowQrToken} size={200} level="M" />
+                <TicketQrCode value={rowQrToken} />
                 <span className="max-w-[220px] truncate font-mono text-xs font-bold text-slate-700 dark:text-slate-200" title={rowQrToken}>
                   {rowQrToken}
                 </span>

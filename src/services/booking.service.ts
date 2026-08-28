@@ -40,6 +40,8 @@ export type BookingsListFilters = {
   ticketMode?: string;
   tripDateFrom?: string;
   tripDateTo?: string;
+  /** Bypasses the "hide past trips by default" rule below when no explicit date range is set. */
+  includePastTrips?: boolean;
 };
 
 export type BookingsListResult = {
@@ -78,9 +80,9 @@ function applyBookingListFilters<T extends { eq: Function; gte: Function; lte: F
   const tripDateTo = normalizeFilterValue(filters?.tripDateTo);
   const search = normalizeFilterValue(filters?.search);
   const tripDateFromRaw = normalizeFilterValue(filters?.tripDateFrom);
-  // Hide bookings for past trips by default; once the user searches or sets an explicit date range, show everything they asked for.
+  // Hide bookings for past trips by default; once the user searches, sets an explicit date range, or opts in via includePastTrips, show everything they asked for.
   const tripDateFrom = tripDateFromRaw
-    || (!search && !tripDateTo ? getLocalDateInputValue(new Date()) : null);
+    || (!search && !tripDateTo && !filters?.includePastTrips ? getLocalDateInputValue(new Date()) : null);
   if (tripDateFrom) q = q.gte('trip.departure_datetime', `${tripDateFrom}T00:00:00`) as T;
 
   if (tripDateTo) q = q.lte('trip.departure_datetime', `${tripDateTo}T23:59:59.999`) as T;
